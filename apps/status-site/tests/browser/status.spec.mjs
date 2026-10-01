@@ -57,7 +57,7 @@ test("service details retain precision, coverage, scope and interactive history"
   const row = page.locator("#home");
   await expect(row.locator(".metric").first()).toContainText("99.995%");
   await expect(row.locator(".metric").first()).toContainText("42542 样本");
-  await row.locator("summary").click();
+  await row.locator("summary .service-title").click();
   await expect(row.locator("summary")).toHaveAttribute("aria-expanded", "true");
   await expect(row.locator(".service-detail")).toContainText("覆盖 99.8%");
   await expect(row.locator(".service-detail")).toContainText("不覆盖登录、上传或下载全过程");
@@ -66,6 +66,6 @@ test("service details retain precision, coverage, scope and interactive history"
   await history.locator(".history-cell").first().click();
   await expect(history.locator(".history-readout")).toContainText("2026-09-01");
   await expect(row).toHaveAttribute("open", "");
-  await row.locator("summary").click();
+  await row.locator("summary .service-title").click();
   await expect(row.locator(".service-detail")).toBeHidden();
 });
