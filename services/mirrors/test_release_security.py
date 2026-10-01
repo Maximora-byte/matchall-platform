@@ -51,6 +51,12 @@ class ReleaseSecurityTests(unittest.TestCase):
             files={"upload": (filename, content, "application/octet-stream")},
             headers={"Authorization": f"Bearer {self.api_token}"} if api else {}, follow_redirects=False)
 
+    def admin_upload(self, content=b"admin release", channel="stable", version="1.0", filename="package.zip"):
+        self.client.cookies.set("mirror_session", app.serializer.dumps({**self.user, "is_superuser": True}))
+        return self.client.post("/admin/releases",
+            data={"project_slug": "test-project", "version": version, "channel": channel, "csrf_token": "test-csrf"},
+            files={"upload": (filename, content, "application/octet-stream")}, follow_redirects=False)
+
     def artifacts(self):
         with app.db() as con:
             return [dict(row) for row in con.execute("""SELECT a.*,r.status,r.channel FROM artifacts a
@@ -129,7 +135,39 @@ class ReleaseSecurityTests(unittest.TestCase):
             con.execute("""INSERT INTO artifacts(release_id,filename,local_path,size,sha256,created_at)
                 VALUES(?,'package.zip',?,6,?,0)""", (release, str(legacy.relative_to(app.FILES_DIR)), hashlib.sha256(b"legacy").hexdigest()))
         self.assertEqual(self.upload(b"new beta", channel="beta").status_code, 303)
+        self.assertEqual(self.admin_upload(b"admin alpha", channel="alpha").status_code, 303)
         self.assert_artifact_bytes(self.artifacts()[0], b"legacy")
+
+    def test_admin_repeated_and_cross_channel_publications_preserve_prior_bytes(self):
+        for content, channel in ((b"first", "stable"), (b"second", "stable"), (b"beta", "beta")):
+            self.assertEqual(self.admin_upload(content, channel=channel).status_code, 303)
+        artifacts = self.artifacts()
+        self.assertEqual(len({item["local_path"] for item in artifacts}), 3)
+        for artifact, content in zip(artifacts, (b"first", b"second", b"beta")):
+            self.assertEqual(artifact["status"], "published")
+            self.assert_artifact_bytes(artifact, content)
+
+    def test_admin_paths_cannot_follow_old_project_directory_symlink(self):
+        outside = Path(self.temp.name) / "outside"
+        outside.mkdir()
+        (outside / "package.zip").write_bytes(b"untouched")
+        (app.FILES_DIR / "test-project").symlink_to(outside, target_is_directory=True)
+        self.assertEqual(self.admin_upload(version="..", filename="../../package.zip").status_code, 303)
+        artifact = self.artifacts()[0]
+        self.assertEqual((app.FILES_DIR / artifact["local_path"]).parent, app.FILES_DIR)
+        self.assertEqual((outside / "package.zip").read_bytes(), b"untouched")
+        self.assert_artifact_bytes(artifact, b"admin release")
+
+    def test_admin_storage_stays_local_and_failed_upload_preserves_published_file(self):
+        with patch.object(app, "s3_client", side_effect=AssertionError("Admin uploads remain local")):
+            self.assertEqual(self.admin_upload(b"published").status_code, 303)
+        original = self.artifacts()[0]
+        self.assertEqual(original["storage_provider"], "local")
+        before = set(app.FILES_DIR.iterdir())
+        with patch.object(app, "MAX_UPLOAD", 3):
+            self.assertEqual(self.admin_upload(b"too big").status_code, 413)
+        self.assertEqual(set(app.FILES_DIR.iterdir()), before)
+        self.assert_artifact_bytes(original, b"published")
 
     def test_storage_paths_ignore_filename_and_version_directories(self):
         for version in ("..", ".", "../../escape"):

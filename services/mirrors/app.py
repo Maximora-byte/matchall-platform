@@ -200,7 +200,7 @@ def finalize_hosted_file(target: Path, project_slug: str, version: str, filename
     return "s3", key, ""
 
 
-async def store_release_upload(upload: UploadFile, project_slug: str, version: str):
+async def store_release_upload(upload: UploadFile, project_slug: str, version: str, *, local_only: bool = False):
     # The display filename/version must never choose a storage path. mkstemp
     # creates a new, exclusive file (including when a candidate is a symlink).
     filename = Path(upload.filename or "").name
@@ -219,7 +219,10 @@ async def store_release_upload(upload: UploadFile, project_slug: str, version: s
                 digest.update(chunk)
                 out.write(chunk)
         # Only a completely written file may be referenced by an artifact row.
-        provider, key, local_path = finalize_hosted_file(target, project_slug, version, filename)
+        if local_only:
+            provider, key, local_path = "local", "", str(target.relative_to(FILES_DIR))
+        else:
+            provider, key, local_path = finalize_hosted_file(target, project_slug, version, filename)
         return filename, size, digest.hexdigest(), provider, key, local_path
     except BaseException:
         target.unlink(missing_ok=True)
@@ -1443,18 +1446,9 @@ async def create_release(request: Request, csrf_token: str = Form(...), project_
     now = int(time.time())
     local_path = ""; filename = ""; size = 0; sha256 = expected_sha256.strip().lower()
     if upload and upload.filename:
-        filename = Path(upload.filename).name
-        safe_dir = FILES_DIR / valid_slug(project_slug) / re.sub(r"[^A-Za-z0-9._-]", "_", version)
-        safe_dir.mkdir(parents=True, exist_ok=True)
-        target = safe_dir / filename
-        digest = hashlib.sha256()
-        with target.open("wb") as out:
-            while chunk := await upload.read(1024 * 1024):
-                size += len(chunk)
-                if size > MAX_UPLOAD:
-                    target.unlink(missing_ok=True); raise HTTPException(413, "file too large")
-                digest.update(chunk); out.write(chunk)
-        sha256 = digest.hexdigest(); local_path = str(target.relative_to(FILES_DIR)); external_url = ""
+        filename, size, sha256, _, _, local_path = await store_release_upload(
+            upload, valid_slug(project_slug), version, local_only=True)
+        external_url = ""
     elif external_url:
         if not external_url.startswith("https://"): raise HTTPException(400, "external URL must use https")
         filename = Path(external_url.split("?", 1)[0]).name or f"{project_slug}-{version}"
@@ -1471,7 +1465,7 @@ async def create_release(request: Request, csrf_token: str = Form(...), project_
             release = con.execute("SELECT id FROM releases WHERE project_id=? AND version=? AND channel=?", (project["id"], version.strip(), channel)).fetchone()
             con.execute("INSERT INTO artifacts(release_id,os,arch,filename,local_path,external_url,size,sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?)", (release["id"], os_name.strip().lower(), arch.strip().lower(), filename, local_path, external_url.strip(), size, sha256, now))
             con.execute("UPDATE projects SET updated_at=? WHERE id=?", (now, project["id"]))
-    except Exception:
+    except BaseException:
         if local_path: (FILES_DIR / local_path).unlink(missing_ok=True)
         raise
     return RedirectResponse(f"/project/{project_slug}", status_code=303)
