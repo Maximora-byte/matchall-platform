@@ -92,7 +92,7 @@ class AuthPaymentTests(unittest.TestCase):
 
     def stripe_event(self, event_id="evt_paid", payment_status="paid"):
         return {"id": event_id, "type": "checkout.session.completed", "data": {"object": {
-            "id": "cs_synthetic", "payment_status": payment_status, "payment_intent": "pi_synthetic",
+            "id": "cs_synthetic", "mode": "payment", "payment_status": payment_status, "payment_intent": "pi_synthetic",
             "amount_total": 1500, "currency": "usd", "metadata": {"order_no": "order-alice", "user_sub": "alice"}}}}
 
     def post_stripe(self, event, *, timestamp=None, secret=None, signature=None):
