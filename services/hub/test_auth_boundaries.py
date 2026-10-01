@@ -113,9 +113,17 @@ class AuthBoundaryTests(unittest.TestCase):
         app.SNAPSHOT_DIR.mkdir()
         for service in ("xboard", "nextcloud", "mirrors"):
             records = [{"subject": user["sub"], "username": user["preferred_username"], "email": user["email"],
-                        "marker": f"{service}-{name}"} for name, user in self.users.items()]
+                        "marker": f"{service}-{name}", "used": 0, "quota": 100, "enabled": True,
+                        "transfer_enable": 100, "expired_at": self.now + 3600, "online_count": 0,
+                        "device_limit": 2, "banned": 0, "plan_name": "Synthetic plan",
+                        "active_entitlements": 1, "active_tokens": 0, "order_count": 1, "paid_orders": 1}
+                       for name, user in self.users.items()]
             (app.SNAPSHOT_DIR / f"{service}.json").write_text(json.dumps({"generated_at": self.now, "users": records}))
         def capture(name, request, **context):
+            if "console_services" in context:
+                records = {key: None for key in ("network", "drive", "mirrors")}
+                records.update({item["key"]: item["record"] for item in context["console_services"]})
+                return JSONResponse(records)
             return JSONResponse({key: context[key] for key in ("network", "drive", "mirrors")})
         with patch.object(app, "render", side_effect=capture):
             for name in ("alice", "bob"):
