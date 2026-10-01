@@ -28,6 +28,8 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Run service tests
         shell: bash
+        env:
+          DATA_DIR: ${{ runner.temp }}/matchall-${{ matrix.service }}-data
         run: |
           set -euo pipefail
           if [[ "${{ matrix.service }}" == "dns" ]]; then
