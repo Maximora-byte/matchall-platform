@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 520" role="img" aria-labelledby="title desc">
+  <title id="title">MatchAll service constellation</title>
+  <desc id="desc">An abstract constellation connecting MatchAll digital services.</desc>
+  <defs>
+    <linearGradient id="g" x1="70" y1="70" x2="450" y2="450" gradientUnits="userSpaceOnUse"><stop stop-color="#6CE9BD"/><stop offset=".48" stop-color="#62DDFF"/><stop offset="1" stop-color="#9F8CFF"/></linearGradient>
+    <radialGradient id="halo"><stop stop-color="#62DDFF" stop-opacity=".22"/><stop offset="1" stop-color="#62DDFF" stop-opacity="0"/></radialGradient>
+    <filter id="blur"><feGaussianBlur stdDeviation="12"/></filter>
+  </defs>
+  <circle cx="260" cy="260" r="244" fill="url(#halo)" opacity=".42" filter="url(#blur)"/>
+  <g fill="none" stroke-linecap="round">
+    <circle class="orbit orbit-a" cx="260" cy="260" r="188" stroke="url(#g)" stroke-opacity=".34" stroke-width="1.2" stroke-dasharray="3 13"/>
+    <circle class="orbit orbit-b" cx="260" cy="260" r="132" stroke="#fff" stroke-opacity=".13" stroke-width="1" stroke-dasharray="1 9"/>
+    <path class="route route-a" d="M106 181C166 111 256 92 340 130s113 119 79 205" stroke="url(#g)" stroke-opacity=".62" stroke-width="1.5" stroke-dasharray="1 10"/>
+    <path class="route route-b" d="M101 331c72 63 177 75 259 28 42-24 69-59 80-102" stroke="url(#g)" stroke-opacity=".48" stroke-width="1.5" stroke-dasharray="1 11"/>
+    <path d="M118 176 260 260 407 154M106 340l154-80 155 105" stroke="#BFD7ED" stroke-opacity=".12"/>
+  </g>
+  <g class="nodes">
+    <g transform="translate(260 260)"><circle r="58" fill="#0D1525" stroke="url(#g)" stroke-opacity=".8"/><circle r="44" fill="none" stroke="#fff" stroke-opacity=".11"/><path d="M-17 4 0-14 17 4 0 21Z" fill="none" stroke="#ECF9FF" stroke-width="2"/><circle r="4" fill="#6CE9BD"/></g>
+    <g class="node n1" transform="translate(107 176)"><circle r="13" fill="#0D1525" stroke="#6CE9BD"/><circle r="4" fill="#6CE9BD"/></g>
+    <g class="node n2" transform="translate(407 154)"><circle r="13" fill="#0D1525" stroke="#62DDFF"/><circle r="4" fill="#62DDFF"/></g>
+    <g class="node n3" transform="translate(415 365)"><circle r="13" fill="#0D1525" stroke="#9F8CFF"/><circle r="4" fill="#9F8CFF"/></g>
+    <g class="node n4" transform="translate(106 340)"><circle r="13" fill="#0D1525" stroke="#FFBD73"/><circle r="4" fill="#FFBD73"/></g>
+  </g>
+  <style>
+    .orbit{transform-box:fill-box;transform-origin:center;animation:spin 30s linear infinite}.orbit-b{animation-direction:reverse;animation-duration:38s}.route{stroke-dashoffset:0;animation:signal 7s linear infinite}.route-b{animation-duration:9s;animation-direction:reverse}.node{transform-box:fill-box;transform-origin:center;animation:pulse 4s ease-in-out infinite}.n2{animation-delay:-1s}.n3{animation-delay:-2s}.n4{animation-delay:-3s}@keyframes spin{to{transform:rotate(360deg)}}@keyframes signal{to{stroke-dashoffset:-110}}@keyframes pulse{50%{opacity:.62;filter:drop-shadow(0 0 8px currentColor)}}@media(prefers-reduced-motion:reduce){*{animation:none!important}}
+  </style>
+</svg>

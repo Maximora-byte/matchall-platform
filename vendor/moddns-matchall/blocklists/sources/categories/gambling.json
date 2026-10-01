@@ -1,0 +1,26 @@
+[
+  {
+    "blocklist_id": "hagezi_gambling",
+    "name": "Hagezi Gambling",
+    "description": "Blocks gambling content including online casinos, sports betting, lotteries, and related sites.",
+    "source_url": "https://gitlab.com/hagezi/mirror/-/raw/main/dns-blocklists/wildcard/gambling-onlydomains.txt",
+    "homepage": "https://github.com/hagezi/dns-blocklists",
+    "syntax": "domains",
+    "kind": "category",
+    "category": "gambling",
+    "tags": ["category", "gambling", "hagezi"],
+    "schedule": "24 * * * *"
+  },
+  {
+    "blocklist_id": "blp_gambling",
+    "name": "Block List Project - Gambling",
+    "description": "Community-maintained list blocking gambling-related domains including casinos, betting, and lottery sites.",
+    "source_url": "https://blocklistproject.github.io/Lists/alt-version/gambling-nl.txt",
+    "homepage": "https://github.com/blocklistproject/Lists",
+    "syntax": "domains",
+    "kind": "category",
+    "category": "gambling",
+    "tags": ["category", "gambling", "blp"],
+    "schedule": "17 * * * *"
+  }
+]

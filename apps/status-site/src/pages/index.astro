@@ -1,0 +1,28 @@
+---
+const title = '服务状态 · MatchAll';
+---
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f6f7fb" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0a0b12" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"><link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest">
+  <title>{title}</title><meta name="description" content="MatchAll 公共服务状态、30 天可用率、探测范围与事件记录"><link rel="canonical" href="https://status.maximoraverse.org/">
+  <meta property="og:type" content="website"><meta property="og:site_name" content="MatchAll"><meta property="og:title" content="MatchAll 服务状态"><meta property="og:description" content="查看核心服务当前状态、探测范围、可用率与近期事件。"><meta property="og:url" content="https://status.maximoraverse.org/"><meta property="og:image" content="https://www.maximoraverse.org/assets/brand/matchall-social-1200x630.png"><meta name="twitter:card" content="summary_large_image">
+  <script is:inline type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"MatchAll 服务状态","url":"https://status.maximoraverse.org/","description":"MatchAll 公共服务状态与事件记录"}</script>
+  <link rel="alternate" type="application/rss+xml" href="/feed.xml"><link rel="stylesheet" href="/status.css?v=5"><link rel="stylesheet" href="/brand-icon.css?v=1">
+</head>
+<body>
+  <a class="skip" href="#main">跳到状态概览</a>
+  <header class="nav"><a class="brand" href="https://www.maximoraverse.org/"><img src="/icon-192.png" width="36" height="36" alt=""><span><strong>MatchAll</strong><small>Status</small></span></a><nav aria-label="主导航"><a href="https://maximoraverse.org/">主站</a><a href="https://console.maximoraverse.org/">控制台</a><a class="active" href="/" aria-current="page">状态</a><a href="/feed.xml">RSS</a></nav></header>
+  <main id="main" class="wrap">
+    <section class="overview" aria-labelledby="page-title"><div class="overview-copy"><p class="eyebrow">PUBLIC STATUS</p><h1 id="page-title">MatchAll 服务状态</h1><p class="intro">公开、只读的可用性视图。检查范围不等同于登录、上传或下载全流程。</p></div><aside id="summary" class="summary loading" aria-live="polite" aria-busy="true"><div class="summary-state"><span class="state-icon" aria-hidden="true">…</span><div><small>整体状态</small><strong>正在读取探测结果</strong></div></div><div class="summary-line"><span>最近探测 <strong id="last-probe">--</strong></span><details><summary>探测信息</summary><dl><div><dt>页面刷新</dt><dd id="page-refresh">--</dd></div><div><dt>探测位置</dt><dd id="probe-region">--</dd></div><div><dt>说明</dt><dd>仅覆盖各服务列出的只读检查范围</dd></div></dl></details></div></aside></section>
+    <section id="attention-section" class="attention-section" aria-labelledby="attention-title" hidden><div class="section-head"><div><p class="eyebrow">ACTIVE NOTICE</p><h2 id="attention-title">当前故障与维护</h2></div></div><div id="attention" class="attention"></div></section>
+    <section class="section services-section" aria-labelledby="services-title"><div class="section-head"><div><p class="eyebrow">SERVICES</p><h2 id="services-title">服务状态</h2></div><p id="freshness" class="freshness">正在建立连接</p></div><div id="services" class="service-groups" aria-live="polite" aria-busy="true"><div class="skeleton"></div><div class="skeleton"></div></div></section>
+    <section class="section incidents-section" aria-labelledby="incidents-title"><div class="section-head"><div><p class="eyebrow">TIMELINE</p><h2 id="incidents-title">近期事件</h2></div><div class="section-links"><a href="/feed.xml">RSS</a><a href="https://console.maximoraverse.org/notifications">个人通知设置 ↗</a></div></div><div id="incidents" class="incidents"><article class="incident"><div><h3>正在载入事件记录</h3><p>请稍候。</p></div></article></div></section>
+    <section class="method" aria-labelledby="method-title"><div><p class="eyebrow">METHODOLOGY</p><h2 id="method-title">指标与状态说明</h2></div><div><div class="legend" aria-label="状态图例"><span>● 正常</span><span>△ 性能下降</span><span>◐ 部分不可用</span><span>× 不可用</span><span>◇ 维护中</span><span>? 未知/无数据</span></div><div class="method-grid"><article><h3>可用率与覆盖</h3><p>统计最近 30 个 UTC 日历日；探测与页面刷新时刻以 UTC+8 显示。成功样本 ÷ 已取得样本，明确维护窗口排除；缺失时段不计成功或失败。</p></article><article><h3>延迟</h3><p>服务网络过去 24 小时成功 HTTP 探测的平均耗时；没有成功样本时显示暂无数据。</p></article><article><h3>数据新鲜度</h3><p>每项依据自己的探测时间判断；超过 180 秒显示未知并触发排查，不代表网站应自动回滚。</p></article></div></div></section>
+  </main>
+  <footer><span>© 2026 MatchAll Status</span><span>每 60 秒刷新 · 时间为 UTC+8</span><a href="https://www.maximoraverse.org/contact/">联系支持</a></footer>
+  <script type="module" src="/status-app.js?v=2"></script>
+</body>
+</html>

@@ -1,0 +1,108 @@
+package requestcontext
+
+import (
+	"context"
+	"time"
+
+	"github.com/AdguardTeam/dnsproxy/proxy"
+	"github.com/ivpn/dns/libs/logging"
+	"github.com/ivpn/dns/proxy/model"
+	"github.com/rs/zerolog"
+)
+
+type RequestContext struct {
+	// Ctx                     context.Context
+	ProfileId                   string            `json:"profile_id"`
+	DeviceId                    string            `json:"device_id"`
+	PrivacySettings             map[string]string `json:"privacy_settings"`
+	LogsSettings                map[string]string `json:"logs_settings"`
+	AdvancedSettings            map[string]string `json:"advanced_settings"`
+	DNSSECSettings              map[string]string `json:"dnssec_settings"`
+	RebindingProtectionSettings map[string]string `json:"rebinding_protection_settings"`
+	StatisticsSettings          map[string]string `json:"statistics_settings"`
+	// Per-profile filter inputs from the settings batch; the filter stages
+	// read these instead of the store.
+	Blocklists []string `json:"blocklists"`
+	// MatchedBlocklists is best-effort aggregate attribution for the private
+	// MatchAll gateway. It is never serialized into query logs.
+	MatchedBlocklists       []string                `json:"-"`
+	BlockedServices         []string                `json:"blocked_services"`
+	CustomRules             []map[string]string     `json:"custom_rules"`
+	PartialFilteringResults []model.StageResult     `json:"partial_filtering_results"`
+	FilterResult            model.FilterResult      `json:"filter_result"`
+	Logger                  logging.LoggerInterface `json:"-"`
+	LoggerConfig            logging.LoggingConfig   `json:"logger_config"`
+	StartTime               time.Time               `json:"-"`
+	UpstreamName            string                  `json:"upstream_name"`
+	// UpstreamErr is the resolve error captured from the vendor proxy (nil on
+	// success). Consumed by query-log outcome classification; never serialized.
+	UpstreamErr error `json:"-"`
+}
+
+// NewRequestContext builds the per-request state from the profile's settings
+// batch. Settings groups whose read failed are nil maps; callers have already
+// applied their defaults.
+func NewRequestContext(ctx context.Context, p *proxy.Proxy, profileId string, deviceId string, settings *model.ProfileSettings, logger logging.LoggerInterface) *RequestContext {
+	if settings == nil {
+		settings = &model.ProfileSettings{}
+	}
+	return &RequestContext{
+		// Ctx:              ctx,
+		ProfileId:                   profileId,
+		DeviceId:                    deviceId,
+		PrivacySettings:             settings.Privacy,
+		LogsSettings:                settings.Logs,
+		DNSSECSettings:              settings.DNSSEC,
+		RebindingProtectionSettings: settings.RebindingProtection,
+		AdvancedSettings:            settings.Advanced,
+		StatisticsSettings:          settings.Statistics,
+		Blocklists:                  settings.Blocklists,
+		BlockedServices:             settings.Services,
+		CustomRules:                 settings.CustomRules,
+		Logger:                      logger,
+		LoggerConfig:                logger.Config(),
+	}
+}
+
+// DomainLoggingEnabled returns true if logs settings allow domain logging.
+func (r *RequestContext) DomainLoggingEnabled() bool {
+	return r.LoggerConfig.LogDomains
+}
+
+// ClientIPLoggingEnabled returns true if logs settings allow client IP logging.
+func (r *RequestContext) ClientIPLoggingEnabled() bool {
+	return r.LoggerConfig.LogClientIPs
+}
+
+// AddDomain conditionally adds the domain field to the provided zerolog event.
+// Returns the same event for chaining.
+func (r *RequestContext) AddDomain(e *zerolog.Event, domain string) *zerolog.Event {
+	if r.DomainLoggingEnabled() {
+		return e.Str("domain", domain)
+	}
+	return e
+}
+
+// MaybeDomain conditionally adds any domain-like string field.
+func (r *RequestContext) MaybeDomain(e *zerolog.Event, key, value string) *zerolog.Event {
+	if r.DomainLoggingEnabled() {
+		return e.Str(key, value)
+	}
+	return e
+}
+
+// AddClientIP conditionally adds the client_ip field.
+func (r *RequestContext) AddClientIP(e *zerolog.Event, ip string) *zerolog.Event {
+	if r.ClientIPLoggingEnabled() {
+		return e.Str("client_ip", ip)
+	}
+	return e
+}
+
+// MaybeClientIP conditionally adds a custom client IP related field.
+func (r *RequestContext) MaybeClientIP(e *zerolog.Event, key, value string) *zerolog.Event {
+	if r.ClientIPLoggingEnabled() {
+		return e.Str(key, value)
+	}
+	return e
+}

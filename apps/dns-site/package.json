@@ -1,0 +1,1 @@
+{"name":"matchall-dns-site","private":true,"type":"module","scripts":{"check":"astro check","build":"astro build"},"dependencies":{"@astrojs/check":"^0.9.6","astro":"^5.18.2","typescript":"^5.9.3"}}

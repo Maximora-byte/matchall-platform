@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /account
+Disallow: /checkout/
+Disallow: /webhooks/
+Disallow: /api/
+Disallow: /login
+Disallow: /logout
+Sitemap: https://mirrors.maximoraverse.org/sitemap.xml

@@ -1,0 +1,17 @@
+[
+  {
+    "update": "profiles",
+    "updates": [
+      {
+        "q": {},
+        "u": {
+          "$set": {
+            "settings.advanced.recursor": "sdns"
+          }
+        },
+        "multi": true
+      }
+    ],
+    "writeConcern": { "w": "majority" }
+  }
+]

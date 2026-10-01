@@ -1,0 +1,61 @@
+package filter
+
+import (
+	"context"
+	"net"
+	"testing"
+
+	"github.com/AdguardTeam/dnsproxy/proxy"
+	"github.com/ivpn/dns/libs/logging"
+	"github.com/ivpn/dns/proxy/mocks"
+	"github.com/ivpn/dns/proxy/model"
+	"github.com/ivpn/dns/proxy/requestcontext"
+	"github.com/miekg/dns"
+	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/assert"
+)
+
+func TestIPFilter_BlockWinsOnConflict_CustomRules_IP(t *testing.T) {
+	const profileID = "test-profile"
+
+	allowIP := "1.1.1.1"
+	blockIP := "2.2.2.2"
+
+	// Custom rules travel on the request context; the store is never read here.
+	customRules := []map[string]string{
+		{"action": ACTION_ALLOW, "value": allowIP, "syntax": "ip4_addr"},
+		{"action": ACTION_BLOCK, "value": blockIP, "syntax": "ip4_addr"},
+	}
+
+	dnsProxy := &proxy.Proxy{}
+	ipFilter := NewIPFilter(dnsProxy, mocks.NewCache(t), nil, nil, nil, nil)
+
+	// Create DNS request/response with two A answers.
+	req := new(dns.Msg)
+	req.SetQuestion("example.com.", dns.TypeA)
+
+	res := new(dns.Msg)
+	res.SetReply(req)
+	res.Answer = []dns.RR{
+		&dns.A{
+			Hdr: dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+			A:   net.ParseIP(allowIP),
+		},
+		&dns.A{
+			Hdr: dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+			A:   net.ParseIP(blockIP),
+		},
+	}
+
+	dnsCtx := &proxy.DNSContext{Req: req, Res: res}
+
+	loggerFactory := logging.NewFactory(zerolog.DebugLevel)
+	testLogger := loggerFactory.ForProfile(profileID, true)
+	reqCtx := &requestcontext.RequestContext{ProfileId: profileID, CustomRules: customRules, Logger: testLogger}
+
+	err := ipFilter.Execute(context.Background(), reqCtx, dnsCtx)
+	assert.NoError(t, err)
+
+	// When both allow and block custom rules match within a single response, block wins.
+	assert.Equal(t, model.StatusBlocked, reqCtx.FilterResult.Status)
+}

@@ -1,0 +1,16 @@
+[
+  {
+    "update": "accounts",
+    "updates": [
+      {
+        "q": {},
+        "u": {
+          "$unset": {
+            "error_reports_consent": ""
+          }
+        },
+        "multi": true
+      }
+    ]
+  }
+]

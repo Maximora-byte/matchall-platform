@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>使用条款 - MatchAll Drive</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f3ff;
+        --ink: #181625;
+        --muted: #6d6880;
+        --panel: rgba(255, 255, 255, 0.78);
+        --line: rgba(50, 42, 84, 0.14);
+        --primary: #7b61ff;
+        --accent: #19b8a6;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #101019;
+          --ink: #f7f4ff;
+          --muted: #aaa5bd;
+          --panel: rgba(24, 23, 36, 0.82);
+          --line: rgba(255, 255, 255, 0.12);
+        }
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        background:
+          linear-gradient(135deg, rgba(123, 97, 255, 0.18), rgba(25, 184, 166, 0.1)),
+          var(--bg);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.7;
+      }
+
+      header,
+      main {
+        width: min(880px, calc(100% - 32px));
+        margin: 0 auto;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 24px 0;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 800;
+      }
+
+      .brand img {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 1px solid var(--line);
+      }
+
+      .nav {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .nav a {
+        min-height: 40px;
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 0 14px;
+        background: var(--panel);
+      }
+
+      main {
+        margin-top: 7vh;
+        margin-bottom: 80px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: clamp(24px, 5vw, 48px);
+        backdrop-filter: blur(18px);
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: clamp(34px, 6vw, 58px);
+        line-height: 1.05;
+      }
+
+      h2 {
+        margin-top: 34px;
+        font-size: 20px;
+      }
+
+      p,
+      li {
+        color: var(--muted);
+      }
+
+      .updated {
+        color: var(--muted);
+        margin-bottom: 28px;
+      }
+    </style>
+  <link rel="icon" href="/assets/brand/favicon.svg?v=20260926" type="image/svg+xml"><link rel="alternate icon" href="/assets/brand/favicon.ico?v=20260926"><link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png?v=20260926"><link rel="stylesheet" href="/assets/brand/brand.css?v=20260926"></head>
+  <body>
+    <header>
+      <a class="brand" href="https://drive.maximoraverse.org/">
+        <img src="https://www.maximoraverse.org/assets/avatar.png" alt="">
+        <span>MatchAll Drive</span>
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="https://drive.maximoraverse.org/">Drive</a>
+        <a href="https://www.maximoraverse.org/">Home</a>
+        <a href="https://blog.maximoraverse.org/">Blog</a>
+      </nav>
+    </header>
+
+    <main>
+      <h1>使用条款</h1>
+      <p class="updated">最后更新：2026-05-26</p>
+
+      <p>MatchAll Drive 是 MatchAll 站点的文件存储和分享服务。使用本服务即表示你同意遵守这些条款。</p>
+
+      <h2>账号与访问</h2>
+      <p>当前服务以受控账号为主。请妥善保管登录凭据，不要共享账号、绕过权限或尝试访问不属于你的文件。</p>
+
+      <h2>文件内容</h2>
+      <p>你需要确保上传、保存和分享的内容合法、合规，并且你拥有相应权利。不得上传恶意软件、钓鱼内容、侵权材料、泄露隐私的数据，或任何会破坏服务稳定性的内容。</p>
+
+      <h2>分享链接</h2>
+      <p>分享链接可能被获得链接的人访问。创建分享前请确认文件可以公开或半公开传播。敏感文件建议设置访问密码、有效期，或不要通过公开链接分享。</p>
+
+      <h2>服务维护</h2>
+      <p>服务可能因维护、升级、备份或安全处理而短暂不可用。管理员可以为了安全、合规或容量管理，限制、暂停或删除不合适的内容和访问。</p>
+
+      <h2>免责声明</h2>
+      <p>本服务按现状提供。会尽量保持稳定和安全，但不承诺绝对不中断或绝对无数据风险。重要文件请自行保留独立备份。</p>
+    </main>
+  </body>
+</html>

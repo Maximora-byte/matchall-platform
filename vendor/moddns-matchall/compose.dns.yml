@@ -1,0 +1,25 @@
+services:
+  proxy:
+    image: dnsproxy:latest
+    restart: always
+    build:
+      context: .
+      dockerfile: proxy/Dockerfile
+    networks:
+      - dnsnetwork
+    container_name: dnsproxy
+    depends_on:
+      - redis_replica_dns
+      - recursor_sdns
+      - recursor_knot
+    ports:
+      - "443:443" # HTTPS
+      - "853:853/tcp" # TLS
+      - "853:853/udp" # QUIC
+      - "9153:9153"   # METRICS
+    volumes:
+      - ./dev/certs:/certs
+      - ./dev/bootstrap/services:/opt/services:ro
+      - ./dev/bootstrap/GeoLite2-ASN/:/opt/geo:ro
+    env_file:
+      - ./proxy/.env

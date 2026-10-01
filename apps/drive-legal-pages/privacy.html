@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>隐私政策 - MatchAll Drive</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f3ff;
+        --ink: #181625;
+        --muted: #6d6880;
+        --panel: rgba(255, 255, 255, 0.78);
+        --line: rgba(50, 42, 84, 0.14);
+        --primary: #7b61ff;
+        --accent: #19b8a6;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #101019;
+          --ink: #f7f4ff;
+          --muted: #aaa5bd;
+          --panel: rgba(24, 23, 36, 0.82);
+          --line: rgba(255, 255, 255, 0.12);
+        }
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        background:
+          linear-gradient(135deg, rgba(123, 97, 255, 0.18), rgba(25, 184, 166, 0.1)),
+          var(--bg);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.7;
+      }
+
+      header,
+      main {
+        width: min(880px, calc(100% - 32px));
+        margin: 0 auto;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 24px 0;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 800;
+      }
+
+      .brand img {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 1px solid var(--line);
+      }
+
+      .nav {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .nav a {
+        min-height: 40px;
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 0 14px;
+        background: var(--panel);
+      }
+
+      main {
+        margin-top: 7vh;
+        margin-bottom: 80px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: clamp(24px, 5vw, 48px);
+        backdrop-filter: blur(18px);
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: clamp(34px, 6vw, 58px);
+        line-height: 1.05;
+      }
+
+      h2 {
+        margin-top: 34px;
+        font-size: 20px;
+      }
+
+      p,
+      li {
+        color: var(--muted);
+      }
+
+      .updated {
+        color: var(--muted);
+        margin-bottom: 28px;
+      }
+    </style>
+  <link rel="icon" href="/assets/brand/favicon.svg?v=20260926" type="image/svg+xml"><link rel="alternate icon" href="/assets/brand/favicon.ico?v=20260926"><link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png?v=20260926"><link rel="stylesheet" href="/assets/brand/brand.css?v=20260926"></head>
+  <body>
+    <header>
+      <a class="brand" href="https://drive.maximoraverse.org/">
+        <img src="https://www.maximoraverse.org/assets/avatar.png" alt="">
+        <span>MatchAll Drive</span>
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="https://drive.maximoraverse.org/">Drive</a>
+        <a href="https://www.maximoraverse.org/">Home</a>
+        <a href="https://blog.maximoraverse.org/">Blog</a>
+      </nav>
+    </header>
+
+    <main>
+      <h1>隐私政策</h1>
+      <p class="updated">最后更新：2026-05-26</p>
+
+      <p>本政策说明 MatchAll Drive 在提供文件存储、登录、分享和管理功能时会处理哪些信息，以及这些信息如何被使用。</p>
+
+      <h2>我们处理的信息</h2>
+      <p>服务会保存账号信息、登录会话、文件元数据、上传文件、分享设置、访问日志和必要的系统运行记录。日志可能包含 IP 地址、访问时间、请求路径和浏览器信息。</p>
+
+      <h2>使用目的</h2>
+      <p>这些信息用于登录认证、文件管理、分享链接、容量统计、故障排查、安全审计、备份恢复和服务维护。</p>
+
+      <h2>文件与分享</h2>
+      <p>未公开分享的文件不会主动公开。通过分享链接发布的文件，可能被拥有链接的人访问。请不要上传或分享不应公开的敏感信息。</p>
+
+      <h2>第三方服务</h2>
+      <p>本服务可能使用浏览器、HTTPS 证书、服务器系统和 Cloudreve 组件提供基础能力。除必要的运行、安全和维护目的外，不会主动出售或公开个人信息。</p>
+
+      <h2>数据保留</h2>
+      <p>账号、文件和日志会在服务运行、备份和安全需要范围内保留。删除文件后，仍可能在短期备份或回收站中保留一段时间。</p>
+
+      <h2>安全</h2>
+      <p>建议使用强密码、开启双因素认证，并避免在公开分享中放置敏感内容。重要文件请自行保留独立备份。</p>
+    </main>
+  </body>
+</html>

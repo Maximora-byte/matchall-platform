@@ -1,0 +1,13 @@
+[{
+  "createIndexes": "sessions",
+  "indexes": [
+    {
+      "key": {
+        "token": 1
+      },
+      "name": "token_unique",
+      "unique": true,
+      "background": true
+    }
+  ]
+}]

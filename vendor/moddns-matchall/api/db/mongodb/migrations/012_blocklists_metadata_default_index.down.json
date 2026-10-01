@@ -1,0 +1,6 @@
+[
+    {
+      "dropIndexes": "blocklists_metadata",
+      "index": "default"
+    }
+]

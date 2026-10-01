@@ -1,0 +1,18 @@
+{% extends 'base.html' %}{% block content %}
+<section class="section-head"><h1 class="small-title">过滤配置备份与恢复</h1><p>备份当前可配置的规则、分组及备注、列表订阅、服务屏蔽和重绑定保护。保留原 DNS 地址、令牌和解析路由。</p><p><a class="button secondary" href="/filters/config.json">下载当前完整过滤配置</a> <a class="button secondary" href="/filters">返回过滤设置</a></p></section>
+{% if request.query_params.get('restored') %}<p role="status">恢复完成，已核对全部过滤项；DNS 地址、令牌与解析路由未改变。</p>{% elif request.query_params.get('unchanged') %}<p role="status">文件与当前过滤配置一致，无需修改。</p>{% endif %}
+<section class="panel"><h2>备份范围</h2><p>这是过滤配置备份，不是账号或服务器备份。不包含密码、令牌、账号标识、解析路由、查询日志、DNSSEC／递归上游设置和显示排序。导出的规则域名与备注可能包含私人信息，请妥善保存。</p><p>每份最多 1,000 条规则、每种规则类型最多 100 个分组、文件最大 800 KB，超过限制会明确拒绝，不会截断。文件带有基础匹配语义，用于拒绝不兼容的恢复。</p><p>当前：{{ '个性化解析已启用，应用配置将影响后续解析' if mapping.routing else '尚未切换解析，恢复仅保存配置，不启用 modDNS' }}。</p></section>
+{% if preview is not none %}
+<section class="panel"><h2>变更预览</h2><p>此预览 10 分钟内有效，仅当前登录会话可用。应用时重新检查配置版本与内容；配置已变化则拒绝提交。</p>
+<p>规则变化 {{ preview.rules | length }} 条；过滤列表新增 {{ preview.lists_added | length }} / 移除 {{ preview.lists_removed | length }}；服务屏蔽新增 {{ preview.services_added | length }} / 移除 {{ preview.services_removed | length }}。</p>
+<p>订阅列表新增：{{ preview.lists_added | join('、') or '无' }}；移除：{{ preview.lists_removed | join('、') or '无' }}。</p><p>服务屏蔽新增：{{ preview.services_added | join('、') or '无' }}；解除：{{ preview.services_removed | join('、') or '无' }}。</p><p>重绑定保护：{{ '开启' if before.rebinding else '关闭' }} → {{ '开启' if target.rebinding else '关闭' }}；分组及备注：{{ '有变化' if preview.groups_changed else '不变' }}。</p>
+{% for r in preview.rules %}<details><summary>{{ r.kind }} · {{ r.value }}</summary><p>原规则：{{ r.before.action if r.before else '无' }} · {{ r.before.group if r.before else '' }} · {{ r.before.note if r.before else '' }}</p><p>目标规则：{{ r.after.action if r.after else '无' }} · {{ r.after.group if r.after else '' }} · {{ r.after.note if r.after else '' }}</p></details>{% endfor %}
+<details><summary>查看原分组和目标分组</summary><pre class="config-json">原分组：{{ before.groups | tojson(indent=2) }}
+目标分组：{{ target.groups | tojson(indent=2) }}</pre></details>
+<details><summary>查看将应用的完整过滤配置</summary><pre class="config-json">{{ target | tojson(indent=2) }}</pre></details>
+{% if preview.changed %}<p><strong>应用后将按预览覆盖过滤项，包含移除文件中不存在的规则和订阅。建议先下载上方当前配置，便于恢复。</strong>服务屏蔽可能影响同一厂商的其他产品；重绑定保护可能影响内网域名访问。多步骤恢复失败可能部分保存，会保持错误状态，需管理员恢复同步后检查。</p><form method="post" action="/filters/config/apply"><input type="hidden" name="csrf_token" value="{{ user.csrf }}"><input type="hidden" name="token" value="{{ token }}"><label><input type="checkbox" name="confirm" value="replace" required>我已检查变更，按预览覆盖过滤配置</label><button class="button">应用预览配置</button></form>{% else %}<p>文件与当前配置一致，不需要应用。</p>{% endif %}
+</section>
+{% endif %}
+<section class="panel"><h2>导入配置并预览</h2><p>选择本平台导出的完整过滤配置 JSON，或粘贴内容。预览不会写入配置。单独的规则 JSON 请在过滤设置页批量导入。</p><label>配置文件<input id="config-file" type="file" accept=".json,application/json"></label><p id="config-file-status" role="status"></p><form method="post" action="/filters/config/preview"><input type="hidden" name="csrf_token" value="{{ user.csrf }}"><label>配置 JSON<textarea id="config-raw" name="raw" rows="10" maxlength="800000" required></textarea></label><button class="button">检查并预览变更</button></form></section>
+<script src="/static/filter-config.js?v=1" defer></script>
+{% endblock %}

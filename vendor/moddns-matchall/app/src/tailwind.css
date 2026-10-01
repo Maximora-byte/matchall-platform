@@ -1,0 +1,529 @@
+/* --- Tailwind Directives --- */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- Custom Components Layer --- */
+@layer components {
+    .all-\[unset\] {
+        all: unset;
+    }
+    .btn-icon { @apply inline-flex items-center justify-center rounded-md hover:bg-muted transition; min-width:44px; min-height:44px; }
+    .auth-shell { @apply w-full max-w-sm sm:max-w-md mx-auto; }
+    .dialog-shell { @apply w-full max-w-sm sm:max-w-md mx-auto; }
+    .field-surface { @apply bg-[var(--shadcn-ui-app-background)]; }
+    /* Safe viewport height helpers (avoid 100vh issues on mobile landscape) */
+    .safe-h-screen { height: 100dvh; max-height: 100dvh; }
+    .safe-min-h-screen { min-height: 100dvh; }
+}
+
+/* --- Autofill Background Override --- */
+/* Override browser's yellow autofill background */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px var(--tailwind-colors-slate-light-100) inset !important;
+    -webkit-text-fill-color: var(--tailwind-colors-slate-light-800) !important;
+    caret-color: var(--tailwind-colors-slate-light-800) !important;
+}
+
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover,
+.dark input:-webkit-autofill:focus,
+.dark input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px var(--tailwind-colors-slate-700) inset !important;
+    -webkit-text-fill-color: var(--tailwind-colors-slate-50) !important;
+    caret-color: var(--tailwind-colors-slate-50) !important;
+}
+
+/* --- Input Text Selection --- */
+/* Ensure selected text remains visible in light mode */
+input::selection,
+textarea::selection {
+    background: var(--tailwind-colors-rdns-600);
+    color: white;
+}
+
+.dark input::selection,
+.dark textarea::selection {
+    background: var(--tailwind-colors-rdns-600);
+    color: white;
+}
+
+/* --- Root Variables (merged) --- */
+/* Base color definitions - these are the actual color values */
+:root {
+    /* Safe area */
+    --safe-area-top: env(safe-area-inset-top);
+    /* Border Radius */
+    --primitives-border-radius-rounded-rounded-md: 6px;
+    --primitives-radius-radius-md: var(--tailwind-primitives-border-radius-rounded-md);
+    --primitives-radius-radius-duplicate: var(--tailwind-primitives-border-radius-rounded-lg);
+    --primitives-radius-radius-sm: var(--tailwind-primitives-border-radius-rounded);
+    --primitives-radius-radius: var(--tailwind-primitives-border-radius-rounded-lg);
+
+    /* Spacing */
+    --primitives-spacing-0: 0px;
+    --primitives-spacing-1: 4px;
+
+    /* Shadows */
+    --shadows-shadow-lg: 0px 4px 6px -4px rgba(0, 0, 0, 0.1), 0px 10px 15px -3px rgba(0, 0, 0, 0.1);
+    --shadows-shadow-md: 0px 2px 4px -2px rgba(0, 0, 0, 0.1), 0px 4px 6px -1px rgba(0, 0, 0, 0.1);
+    --shadows-shadow-sm: 0px 1px 2px 0px rgba(0, 0, 0, 0.05);
+
+    /* ===== BASE COLOR PALETTE ===== */
+    /* These are the raw color values that theme sections reference */
+
+    /* White/Light colors */
+    --tailwind-colors-base-white: rgba(255, 255, 255, 1);
+    --tailwind-colors-base-light-bg: rgba(229, 234, 234, 1);      /* #E5EAEA - light mode page bg */
+    --tailwind-colors-base-light-surface: rgba(241, 245, 249, 1); /* #F1F5F9 - light input bg */
+
+    /* Primary brand color - SAME in both themes */
+    --tailwind-colors-rdns-50: rgba(236, 253, 251, 1);   /* Very light teal for backgrounds */
+    --tailwind-colors-rdns-100: rgba(204, 251, 241, 1);  /* Light teal */
+    --tailwind-colors-rdns-500: rgba(20, 184, 166, 1);
+    --tailwind-colors-rdns-600: rgba(18, 164, 149, 1);
+    --tailwind-colors-rdns-700: rgba(13, 148, 136, 1);
+    --tailwind-colors-rdns-800: rgba(0, 128, 114, 1);
+    --tailwind-colors-rdns-900: rgba(19, 78, 74, 1);
+    --tailwind-colors-rdns-alpha-50: rgba(18, 164, 149, 0.08);
+    --tailwind-colors-rdns-alpha-900: rgba(18, 164, 149, 0.9);
+    --tailwind-colors-rdns-alpha-950: rgba(18, 164, 149, 0.95);
+
+    /* Other brand colors */
+    --tailwind-colors-orange-500: rgb(249, 115, 22);
+    --tailwind-colors-red-400: rgba(248, 113, 113, 1);
+    --tailwind-colors-red-600: rgba(220, 38, 38, 1);
+    --tailwind-colors-red-950: rgba(69, 10, 10, 1);
+    --tailwind-colors-red-50: rgba(254, 242, 242, 1);
+    --tailwind-colors-red-100: rgba(254, 226, 226, 1);
+
+    /* Danger zone background - theme aware */
+    --danger-zone-bg: var(--tailwind-colors-red-950);
+    --tailwind-colors-sky-950: rgba(8, 47, 73, 1);
+    --tailwind-colors-sky-500: rgba(14, 165, 233, 1);
+
+    /* Alert card - theme aware */
+    --alert-card-bg: var(--tailwind-colors-sky-950);
+    --alert-card-fg: rgba(255, 255, 255, 1);
+    --alert-card-icon: rgba(255, 255, 255, 1);
+
+    /* Switch thumb - light gray in dark mode */
+    --switch-thumb-bg: rgba(235, 238, 238, 1);
+
+    /* Slate colors - Original dark-theme-friendly values */
+    /* These stay consistent - used for sidebar (which stays dark) */
+    --tailwind-colors-slate-50: rgba(235, 238, 238, 1);   /* #EBEEEE - Light text */
+    --tailwind-colors-slate-100: rgba(203, 213, 225, 1);  /* #CBD5E1 - Light text */
+    --tailwind-colors-slate-200: rgba(148, 163, 184, 1);  /* #94A3B8 - Medium-light text */
+    --tailwind-colors-slate-300: rgba(148, 163, 184, 1);  /* #94A3B8 - Medium text */
+    --tailwind-colors-slate-400: rgba(100, 116, 139, 1);  /* #64748B - Muted text */
+    --tailwind-colors-slate-500: rgba(71, 85, 105, 1);    /* #475569 - Darker muted */
+    --tailwind-colors-slate-600: rgba(52, 60, 59, 1);     /* #343C3B - Borders */
+    --tailwind-colors-slate-700: rgba(44, 50, 49, 1);     /* #2C3231 - Dark borders */
+    --tailwind-colors-slate-800: rgba(33, 33, 33, 1);     /* #212121 - Dark bg hover */
+    --tailwind-colors-slate-900: rgba(23, 27, 26, 1);     /* #171B1A - Dark bg */
+    --tailwind-colors-slate-950: rgba(17, 21, 20, 1);     /* #111514 - Darkest bg */
+
+    /* Light slate colors - for light mode content areas */
+    --tailwind-colors-slate-light-50: rgba(248, 250, 252, 1);   /* #F8FAFC */
+    --tailwind-colors-slate-light-100: rgba(241, 245, 249, 1);  /* #F1F5F9 */
+    --tailwind-colors-slate-light-200: rgba(226, 232, 240, 1);  /* #E2E8F0 */
+    --tailwind-colors-slate-light-300: rgba(203, 213, 225, 1);  /* #CBD5E1 */
+    --tailwind-colors-slate-light-400: rgba(148, 163, 184, 1);  /* #94A3B8 */
+    --tailwind-colors-slate-light-500: rgba(100, 116, 139, 1);  /* #64748B */
+    --tailwind-colors-slate-light-600: rgba(71, 85, 105, 1);    /* #475569 */
+    --tailwind-colors-slate-light-700: rgba(51, 65, 85, 1);     /* #334155 */
+    --tailwind-colors-slate-light-800: rgba(30, 41, 59, 1);     /* #1E293B */
+    --tailwind-colors-slate-light-900: rgba(15, 23, 42, 1);     /* #0F172A */
+
+    /* Sidebar colors - DEFAULT (dark mode) */
+    /* These get overridden in light mode section */
+    --sidebar-background: var(--shadcn-ui-app-background);
+    --sidebar-foreground: rgba(235, 238, 238, 1);
+    --sidebar-border: rgba(52, 60, 59, 1);
+    --sidebar-muted: rgba(33, 33, 33, 1);
+    --sidebar-muted-foreground: rgba(100, 116, 139, 1);
+    --sidebar-accent: var(--tailwind-colors-rdns-600);
+    --sidebar-accent-foreground: rgba(17, 21, 20, 1);
+    --sidebar-accent-bg: rgba(18, 164, 149, 0.15);
+
+    /* ===== DEFAULT THEME (Dark mode) ===== */
+    /* App semantic colors - Dark mode as default */
+    --shadcn-ui-app-background: var(--tailwind-colors-slate-950);
+    --public-page-background: var(--shadcn-ui-app-background);
+    --shadcn-ui-app-border: var(--tailwind-colors-slate-600);
+    --shadcn-ui-app-foreground: var(--tailwind-colors-slate-50);
+    --shadcn-ui-app-muted: var(--tailwind-colors-slate-800);
+    --shadcn-ui-app-muted-foreground: var(--tailwind-colors-slate-400);
+    --shadcn-ui-app-popover: var(--tailwind-colors-slate-950);
+    --shadcn-ui-app-secondary: var(--tailwind-colors-slate-800);
+    --shadcn-ui-app-secondary-foreground: var(--tailwind-colors-slate-50);
+    --shadcn-ui-app-card: var(--tailwind-colors-slate-900);
+
+    /* Variable Collection - Dark mode default */
+    --variable-collection-surface: var(--tailwind-colors-slate-900);
+    --variable-collection-card: var(--tailwind-colors-slate-900);
+    --variable-collection-surface-foreground: var(--tailwind-colors-slate-50);
+
+
+    /* Tailwind Primitives - Border Radius */
+    --tailwind-primitives-border-radius-rounded: 4px;
+    --tailwind-primitives-border-radius-rounded-full: 9999px;
+    --tailwind-primitives-border-radius-rounded-lg: 8px;
+    --tailwind-primitives-border-radius-rounded-md: 6px;
+
+    /* Tailwind Primitives - Gap */
+    --tailwind-primitives-gap-gap-0: 0px;
+    --tailwind-primitives-gap-gap-0-5: 2px;
+    --tailwind-primitives-gap-gap-1: 4px;
+    --tailwind-primitives-gap-gap-1-5: 6px;
+    --tailwind-primitives-gap-gap-2: 8px;
+    --tailwind-primitives-gap-gap-3: 12px;
+    --tailwind-primitives-gap-gap-4: 16px;
+    --tailwind-primitives-gap-gap-5: 20px;
+    --tailwind-primitives-gap-gap-6: 24px;
+    --tailwind-primitives-gap-gap-10: 40px;
+    --tailwind-primitives-gap-gap-11: 44px;
+
+    /* Tailwind Primitives - Padding */
+    --tailwind-primitives-padding-p-0: 0px;
+    --tailwind-primitives-padding-p-0-5: 2px;
+    --tailwind-primitives-padding-p-1: 4px;
+    --tailwind-primitives-padding-p-1-5: 6px;
+    --tailwind-primitives-padding-p-2: 8px;
+    --tailwind-primitives-padding-p-2-5: 10px;
+    --tailwind-primitives-padding-p-3: 12px;
+    --tailwind-primitives-padding-p-4: 16px;
+
+    /* Text Styles */
+    --text-base-leading-6-normal-font-family: Helvetica;
+    --text-base-leading-6-normal-font-size: 16px;
+    --text-base-leading-6-normal-font-style: normal;
+    --text-base-leading-6-normal-font-weight: 400;
+    --text-base-leading-6-normal-letter-spacing: 0px;
+    --text-base-leading-6-normal-line-height: 24px;
+
+    --text-sm-leading-5-medium-font-family: Helvetica;
+    --text-sm-leading-5-medium-font-size: 14px;
+    --text-sm-leading-5-medium-font-style: normal;
+    --text-sm-leading-5-medium-font-weight: 500;
+    --text-sm-leading-5-medium-letter-spacing: 0px;
+    --text-sm-leading-5-medium-line-height: 20px;
+
+    --text-sm-leading-5-normal-font-family: Helvetica;
+    --text-sm-leading-5-normal-font-size: 14px;
+    --text-sm-leading-5-normal-font-style: normal;
+    --text-sm-leading-5-normal-font-weight: 400;
+    --text-sm-leading-5-normal-letter-spacing: 0px;
+    --text-sm-leading-5-normal-line-height: 20px;
+
+    --text-sm-leading-6-medium-font-family: Helvetica;
+    --text-sm-leading-6-medium-font-size: 14px;
+    --text-sm-leading-6-medium-font-style: normal;
+    --text-sm-leading-6-medium-font-weight: 500;
+    --text-sm-leading-6-medium-letter-spacing: 0px;
+    --text-sm-leading-6-medium-line-height: 24px;
+
+    --text-sm-leading-6-normal-font-family: Helvetica;
+    --text-sm-leading-6-normal-font-size: 14px;
+    --text-sm-leading-6-normal-font-style: normal;
+    --text-sm-leading-6-normal-font-weight: 400;
+    --text-sm-leading-6-normal-letter-spacing: 0px;
+    --text-sm-leading-6-normal-line-height: 24px;
+
+    --text-xs-leading-4-medium-font-family: Helvetica;
+    --text-xs-leading-4-medium-font-size: 12px;
+    --text-xs-leading-4-medium-font-style: normal;
+    --text-xs-leading-4-medium-font-weight: 500;
+    --text-xs-leading-4-medium-letter-spacing: 0px;
+    --text-xs-leading-4-medium-line-height: 16px;
+
+    --text-xs-leading-4-semibold-font-family: Helvetica;
+    --text-xs-leading-4-semibold-font-size: 12px;
+    --text-xs-leading-4-semibold-font-style: normal;
+    --text-xs-leading-4-semibold-font-weight: 600;
+    --text-xs-leading-4-semibold-letter-spacing: 0px;
+    --text-xs-leading-4-semibold-line-height: 16px;
+
+    --text-xs-leading-5-medium-font-family: Helvetica;
+    --text-xs-leading-5-medium-font-size: 12px;
+    --text-xs-leading-5-medium-font-style: normal;
+    --text-xs-leading-5-medium-font-weight: 500;
+    --text-xs-leading-5-medium-letter-spacing: 0px;
+    --text-xs-leading-5-medium-line-height: 20px;
+
+    --text-xs-leading-5-normal-font-family: Helvetica;
+    --text-xs-leading-5-normal-font-size: 12px;
+    --text-xs-leading-5-normal-font-style: normal;
+    --text-xs-leading-5-normal-font-weight: 400;
+    --text-xs-leading-5-normal-letter-spacing: 0px;
+    --text-xs-leading-5-normal-line-height: 20px;
+
+    /* Additional variables */
+    --shadcn-ui-radius-radius: var(--tailwind-primitives-border-radius-rounded-lg);
+    --spacing-spacing-16: 16px;
+}
+
+/*
+To enable a theme in your HTML, simply add one of the following data attributes to an HTML element, like so:
+
+<body data-shadcn-ui-mode="light-emerald">
+    <!-- the rest of your content -->
+</body>
+
+You can apply the theme on any DOM node, not just the `body`
+*/
+
+/* --- Theme Modes --- */
+/* Light mode - uses light backgrounds with dark text for main content */
+[data-shadcn-ui-mode="light-emerald"],
+:root:not(.dark) {
+    /* App semantic colors - Light mode */
+    /* Page background is WHITE, cards/sidebar are light gray */
+    --shadcn-ui-app-background: var(--tailwind-colors-base-white);
+    --public-page-background: #EBEEEE;
+    --shadcn-ui-app-border: var(--tailwind-colors-slate-light-200);
+    --shadcn-ui-app-foreground: var(--tailwind-colors-slate-light-900);
+    --shadcn-ui-app-muted: var(--tailwind-colors-slate-light-200);
+    --shadcn-ui-app-muted-foreground: var(--tailwind-colors-slate-light-500);
+    --shadcn-ui-app-popover: var(--tailwind-colors-base-white);
+    --shadcn-ui-app-secondary: var(--tailwind-colors-slate-light-100);
+    --shadcn-ui-app-secondary-foreground: var(--tailwind-colors-slate-light-900);
+    --shadcn-ui-app-card: var(--tailwind-colors-base-light-bg);
+
+    /* Variable Collection - Light mode */
+    /* Surface/cards use light gray background */
+    --variable-collection-surface: var(--tailwind-colors-base-light-bg);
+    --variable-collection-card: var(--tailwind-colors-base-light-bg);
+    --variable-collection-surface-foreground: var(--tailwind-colors-slate-light-900);
+
+    /* Slate colors - Light mode overrides (flip the scale) */
+    /* Low numbers = dark (for text), high numbers = light (for backgrounds) */
+    --tailwind-colors-slate-50: var(--tailwind-colors-slate-light-900);
+    --tailwind-colors-slate-100: var(--tailwind-colors-slate-light-700);
+    --tailwind-colors-slate-200: var(--tailwind-colors-slate-light-600);
+    --tailwind-colors-slate-300: var(--tailwind-colors-slate-light-500);
+    --tailwind-colors-slate-400: var(--tailwind-colors-slate-light-500);
+    --tailwind-colors-slate-500: var(--tailwind-colors-slate-light-400);
+    --tailwind-colors-slate-600: var(--tailwind-colors-slate-light-300);
+    --tailwind-colors-slate-700: var(--tailwind-colors-slate-light-200);
+    --tailwind-colors-slate-800: var(--tailwind-colors-slate-light-100);
+    --tailwind-colors-slate-900: var(--tailwind-colors-slate-light-50);
+    --tailwind-colors-slate-950: var(--tailwind-colors-base-white);
+
+    /* Sidebar colors - Light mode (white sidebar with dark text) */
+    --sidebar-background: var(--shadcn-ui-app-background);
+    --sidebar-foreground: var(--tailwind-colors-slate-light-800);
+    --sidebar-border: var(--tailwind-colors-slate-light-200);
+    --sidebar-muted: var(--tailwind-colors-slate-light-100);
+    --sidebar-muted-foreground: var(--tailwind-colors-slate-light-500);
+    --sidebar-accent: var(--tailwind-colors-rdns-600);
+    --sidebar-accent-foreground: var(--tailwind-colors-base-white);
+    --sidebar-accent-bg: rgba(18, 164, 149, 0.12);
+
+    /* Danger zone - light red background in light mode */
+    --danger-zone-bg: var(--tailwind-colors-red-100);
+
+    /* Alert card - light blue background with black text in light mode */
+    --alert-card-bg: #E0F2FE;
+    --alert-card-fg: #000000;
+    --alert-card-icon: #075985;
+
+    /* Switch thumb - white in light mode */
+    --switch-thumb-bg: #FFFFFF;
+}
+
+/* Dark mode - uses dark backgrounds with light text */
+/* Using :root.dark for higher specificity to override :root:not(.dark) */
+[data-shadcn-ui-mode="dark-emerald"],
+:root.dark {
+    --shadcn-ui-app-background: rgba(17, 17, 17, 1);  /* #111111 */
+    --public-page-background: var(--shadcn-ui-app-background);
+    --sidebar-background: var(--shadcn-ui-app-background);
+    --shadcn-ui-app-border: var(--tailwind-colors-slate-600);
+    --shadcn-ui-app-foreground: var(--tailwind-colors-slate-50);
+    --shadcn-ui-app-muted: var(--tailwind-colors-slate-800);
+    --shadcn-ui-app-muted-foreground: var(--tailwind-colors-slate-400);
+    --shadcn-ui-app-popover: var(--tailwind-colors-slate-950);
+    --shadcn-ui-app-secondary: var(--tailwind-colors-slate-800);
+    --shadcn-ui-app-secondary-foreground: var(--tailwind-colors-slate-50);
+
+    /* Variable Collection - Dark mode */
+    --variable-collection-surface: rgba(21, 21, 21, 1);
+    --variable-collection-card: rgba(24, 24, 24, 1);
+    --variable-collection-surface-foreground: rgba(20, 50, 47, 1);
+
+    --tailwind-colors-slate-50: rgba(235, 238, 238, 1);
+    --tailwind-colors-slate-100: rgba(168, 182, 180, 1);
+    --tailwind-colors-slate-200: rgba(107, 127, 124, 1);
+    --tailwind-colors-slate-400: rgba(87, 99, 97, 1);
+    --tailwind-colors-slate-500: rgba(64, 74, 72, 1);
+    --tailwind-colors-slate-600: rgba(52, 60, 59, 1);
+    --tailwind-colors-slate-700: rgba(44, 50, 49, 1);
+    --tailwind-colors-slate-800: rgba(33, 33, 33, 1);
+    --tailwind-colors-slate-900: rgba(23, 27, 26, 1);
+    --tailwind-colors-slate-950: rgba(17, 21, 20, 1);
+}
+
+/* --- Tailwind Colors Mode (optional, for explicit color mode selection) --- */
+/* rdns-600 is kept consistent across both themes for brand identity */
+[data-tailwind-colors-mode="light-emerald"] {
+    --tailwind-colors-rdns-800: var(--tailwind-colors-rdns-800);
+    --tailwind-colors-rdns-alpha-50: var(--tailwind-colors-rdns-alpha-50);
+    --tailwind-colors-rdns-alpha-900: var(--tailwind-colors-rdns-alpha-900);
+    --tailwind-colors-rdns-alpha-950: var(--tailwind-colors-rdns-alpha-950);
+}
+
+[data-tailwind-colors-mode="dark-emerald"] {
+    --tailwind-colors-rdns-800: var(--tailwind-colors-rdns-800);
+    --tailwind-colors-rdns-alpha-50: var(--tailwind-colors-rdns-alpha-50);
+    --tailwind-colors-rdns-alpha-900: var(--tailwind-colors-rdns-alpha-900);
+    --tailwind-colors-rdns-alpha-950: var(--tailwind-colors-rdns-alpha-950);
+}
+
+/* --- Base Layer (tailwind base, colors, etc.) --- */
+@layer base {
+    :root {
+        --background: 0 0% 100%;
+        --foreground: 222.2 47.4% 11.2%;
+
+        --muted: 210 40% 96.1%;
+        --muted-foreground: 215.4 16.3% 46.9%;
+
+        --popover: 0 0% 100%;
+        --popover-foreground: 222.2 47.4% 11.2%;
+
+        --border: 214.3 31.8% 91.4%;
+        --input: 214.3 31.8% 91.4%;
+
+        --card: 0 0% 98%;
+        --card-foreground: 222.2 47.4% 11.2%;
+
+        --primary: 222.2 47.4% 11.2%;
+        --primary-foreground: 210 40% 98%;
+
+        --secondary: 210 40% 96.1%;
+        --secondary-foreground: 222.2 47.4% 11.2%;
+
+        --accent: 210 40% 96.1%;
+        --accent-foreground: 222.2 47.4% 11.2%;
+
+        --destructive: 0 100% 50%;
+        --destructive-foreground: 210 40% 98%;
+
+        --ring: 215 20.2% 65.1%;
+
+        --radius: 0.5rem;
+    }
+
+    .dark {
+        --background: 224 71% 4%;
+        --foreground: 213 31% 91%;
+
+        --muted: 223 47% 11%;
+        --muted-foreground: 215.4 16.3% 56.9%;
+
+        --accent: 216 34% 17%;
+        --accent-foreground: 210 40% 98%;
+
+        --popover: 224 71% 4%;
+        --popover-foreground: 215 20.2% 65.1%;
+
+        --border: 216 34% 17%;
+        --input: 216 34% 17%;
+
+        --card: transparent;
+        --card-foreground: 213 31% 91%;
+
+        --primary: 210 40% 98%;
+        --primary-foreground: 222.2 47.4% 1.2%;
+
+        --secondary: 222.2 47.4% 11.2%;
+        --secondary-foreground: 210 40% 98%;
+
+        --destructive: 0 63% 31%;
+        --destructive-foreground: 210 40% 98%;
+
+        --ring: 216 34% 17%;
+
+        --radius: 0.5rem;
+    }
+
+    * {
+        @apply border-border;
+    }
+
+    body {
+        @apply text-foreground;
+        font-feature-settings: "rlig" 1, "calt" 1;
+        /* Background handled by early inline styles in index.html to prevent flash */
+    }
+}
+
+@layer utilities {
+  .safe-px { padding-left: max(1rem, env(safe-area-inset-left)); padding-right: max(1rem, env(safe-area-inset-right)); }
+  .safe-pt { padding-top: max(1rem, env(safe-area-inset-top)); }
+  .safe-pb { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+}
+
+/* --- Switch Colors --- */
+/* Light mode: darker background for unchecked switch */
+:root:not(.dark) [data-slot="switch"][data-state="unchecked"] {
+    background-color: rgba(203, 213, 225, 1);
+}
+
+/* Light mode: white thumb for both states */
+.switch-thumb {
+    background-color: #FFFFFF;
+}
+/* Dark mode: white for checked, gray for unchecked */
+.dark .switch-thumb[data-state="checked"] {
+    background-color: rgba(235, 238, 238, 1);
+}
+.dark .switch-thumb[data-state="unchecked"] {
+    background-color: rgba(148, 163, 184, 1);
+}
+
+/* --- Mobile Focus Outline Suppression (retain accessibility for keyboard) --- */
+@media (hover: none) and (pointer: coarse) {
+    [data-slot="dialog-close"],
+    [data-slot="button"][data-variant="cancel"],
+    [data-slot="button"][data-variant="ghost"] {
+        outline: none !important;
+        -webkit-tap-highlight-color: transparent;
+        box-shadow: none !important;
+    }
+    [data-slot="dialog-close"]:focus-visible,
+    [data-slot="button"][data-variant="cancel"]:focus-visible,
+    [data-slot="button"][data-variant="ghost"]:focus-visible {
+        outline: none !important;
+        box-shadow: none !important;
+    }
+}
+
+/* Provide minimal accessible focus for keyboard (non-touch or when using keyboard navigation) */
+@media (hover: hover) and (pointer: fine) {
+    [data-slot="dialog-close"]:focus-visible,
+    [data-slot="button"][data-variant="cancel"]:focus-visible {
+        outline: 2px solid var(--tailwind-colors-rdns-600);
+        outline-offset: 2px;
+    }
+}
+
+/* --- Landscape Phone Adjustments: reduce vertical space consumption --- */
+@media (orientation: landscape) and (max-height: 500px) {
+    /* Reduce header padding in landscape */
+    [data-slot="mobile-header"] {
+        padding-top: 0.25rem;
+        padding-bottom: 0.25rem;
+    }
+
+    /* Reduce page title size in landscape */
+    [data-slot="mobile-page-title"] {
+        font-size: 1.25rem;
+        padding-bottom: 0.5rem;
+    }
+}

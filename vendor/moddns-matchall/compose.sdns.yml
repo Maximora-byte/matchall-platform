@@ -1,0 +1,11 @@
+services:
+  recursor_sdns:
+    image: c1982/sdns:1.7.2
+    command: ["-c", "/sdns.conf"]
+    restart: always
+    networks:
+      dnsnetwork:
+        ipv4_address: 10.5.0.5
+    container_name: sdns
+    volumes:
+      - ./dev/bootstrap/recursor/sdns.conf:/sdns.conf

@@ -1,0 +1,35 @@
+[{
+    "createIndexes": "accounts",
+    "indexes": [
+      {
+        "key": {
+          "email": 1
+        },
+        "name": "email",
+        "background": true
+      },
+      {
+        "key": {
+          "tokens.value": 1,
+          "tokens.type": 1
+        },
+        "name": "tokens",
+        "background": true
+      },
+      {
+        "key": {
+          "profiles": 1
+        },
+        "name": "profile_id",
+        "background": true
+      },
+      {
+        "key": {
+          "profiles": 1,
+          "temporary": 1
+        },
+        "name": "profile_id_and_temporary_account",
+        "background": true
+      }
+    ]
+}]

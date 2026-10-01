@@ -1,0 +1,220 @@
+package service
+
+import (
+	"context"
+	"net/http"
+
+	"github.com/go-webauthn/webauthn/protocol"
+	"github.com/go-webauthn/webauthn/webauthn"
+	"github.com/ivpn/dns/api/api/requests"
+	"github.com/ivpn/dns/api/api/responses"
+	"github.com/ivpn/dns/api/cache"
+	"github.com/ivpn/dns/api/config"
+	"github.com/ivpn/dns/api/db"
+	webhookClient "github.com/ivpn/dns/api/internal/client"
+	"github.com/ivpn/dns/api/internal/email"
+	"github.com/ivpn/dns/api/internal/idgen"
+	"github.com/ivpn/dns/api/internal/validator"
+	"github.com/ivpn/dns/api/model"
+	"github.com/ivpn/dns/api/service/account"
+	"github.com/ivpn/dns/api/service/apple"
+	"github.com/ivpn/dns/api/service/blocklist"
+	"github.com/ivpn/dns/api/service/dnsstamp"
+	"github.com/ivpn/dns/api/service/profile"
+	querylogs "github.com/ivpn/dns/api/service/query_logs"
+	"github.com/ivpn/dns/api/service/statistics"
+	"github.com/ivpn/dns/api/service/subscription"
+	"github.com/ivpn/dns/libs/urlshort"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+// servicesCatalogReader is satisfied by *servicescatalogcache.Loader and any
+// test stub.  Declared here to avoid importing the cache package from the
+// service package, which would create a cross-layer dependency.
+type servicesCatalogReader = profile.ServicesCatalogReader
+
+type Service struct {
+	Cfg      config.Config
+	Store    db.Db
+	Cache    cache.Cache
+	Webauthn *webauthn.WebAuthn
+	HTTP     webhookClient.Http
+	AccountServicer
+	ProfileServicer
+	AppleServicer
+	BlocklistServicer
+	SubscriptionServicer
+	SessionServicer
+	PasskeyServicer
+	dnsstamp.DNSStampServicer
+}
+
+// New constructs the service layer. servicesCatalog is used by ProfileService
+// for service-ID validation on import (spec row V9); pass nil to skip catalog
+// validation (safe-default for environments without a catalog file).
+func New(cfg config.Config, store db.Db, cache cache.Cache, idGen idgen.Generator, apiValidator *validator.APIValidator, mailer email.Mailer, shortener *urlshort.URLShortener, webauthn *webauthn.WebAuthn, servicesCatalog servicesCatalogReader) Service {
+	blocklistSrv := blocklist.NewBlocklistService(store, cache)
+	queryLogsSrv := querylogs.NewQueryLogsService(store)
+	statsSrv := statistics.NewStatisticsService(store)
+	profSrv := profile.NewProfileService(*cfg.Server, *cfg.Service, store, store, blocklistSrv, queryLogsSrv, statsSrv, servicesCatalog, cache, idGen, apiValidator.Validator)
+	httpClient := webhookClient.New(*cfg.API)
+	subSrv := subscription.NewSubscriptionService(store, store, cache, *cfg.Service, *cfg.API, *httpClient)
+	accSrv := account.NewAccountService(*cfg.Service, store, profSrv, statsSrv, subSrv, store, cache, mailer, idGen, apiValidator.Validator, *httpClient)
+	// AccountService satisfies reauth.MfaVerifier via its MfaCheck method.
+	// Wired post-construction because profSrv is built before accSrv.
+	profSrv.SetMfaVerifier(accSrv)
+	appleSrv := apple.NewAppleService(&cfg, cache, shortener)
+	dnsstampSrv := dnsstamp.NewDNSStampService(&cfg)
+	return Service{
+		Cfg:                  cfg,
+		Store:                store,
+		Cache:                cache,
+		AccountServicer:      accSrv,
+		ProfileServicer:      profSrv,
+		AppleServicer:        appleSrv,
+		BlocklistServicer:    blocklistSrv,
+		SubscriptionServicer: subSrv,
+		Webauthn:             webauthn,
+		HTTP:                 *httpClient,
+		DNSStampServicer:     dnsstampSrv,
+	}
+}
+
+type Servicer interface {
+	SessionServicer
+	AccountServicer
+	ProfileServicer
+	AppleServicer
+	BlocklistServicer
+	SubscriptionServicer
+	PasskeyServicer
+	CredentialServicer
+	dnsstamp.DNSStampServicer
+}
+
+type CredentialServicer interface {
+	GetCredentials(context.Context, primitive.ObjectID) ([]model.Credential, error)
+	SaveCredential(context.Context, webauthn.Credential, primitive.ObjectID) error
+	UpdateCredential(context.Context, webauthn.Credential, primitive.ObjectID) error
+	DeleteCredential(ctx context.Context, credentialID []byte, accountID primitive.ObjectID) error
+	DeleteCredentialByID(context.Context, primitive.ObjectID, primitive.ObjectID) error
+}
+
+type PasskeyServicer interface {
+	BeginRegistration(ctx context.Context, account *model.Account, subID string) (*protocol.CredentialCreation, string, error)
+	FinishRegistration(ctx context.Context, token string, httpReq *http.Request, paSessionID string) error
+	BeginLogin(ctx context.Context, email string) (*protocol.CredentialAssertion, string, error)
+	FinishLogin(ctx context.Context, token string, httpReq *http.Request, saveSession bool) (*model.Account, string, string, error)
+	GetPasskeys(ctx context.Context, account *model.Account) ([]model.Credential, error)
+	// DeletePasskey(ctx context.Context, account *model.Account, credentialID []byte) error
+	BeginReauth(ctx context.Context, purpose, accountID string) (*protocol.CredentialAssertion, string, error)
+	FinishReauth(ctx context.Context, token string, httpReq *http.Request) (*model.Token, error)
+}
+
+type SessionServicer interface {
+	GetSession(context.Context, string) (model.Session, bool, error)
+	SaveSession(context.Context, webauthn.SessionData, string, string, string, string) error
+	DeleteSession(context.Context, string) error
+	DeleteSessionsByAccountID(ctx context.Context, accID string) error
+	DeleteSessionsByAccountIDExceptCurrent(ctx context.Context, accID, currentToken string) error
+	CountSessionsByAccountID(ctx context.Context, accID string) (int64, error)
+}
+
+type AccountServicer interface {
+	GetAccount(ctx context.Context, accountId string) (*model.Account, error)
+	UpdateAccount(ctx context.Context, accountId string, updates []model.AccountUpdate, mfa *model.MfaData) error
+	DeleteAccount(ctx context.Context, accountId string, req requests.AccountDeletionRequest, mfa *model.MfaData) error
+	PurgeAccountData(ctx context.Context, accountId string) error
+	GenerateDeletionCode(ctx context.Context, accountId string) (*responses.DeletionCodeResponse, error)
+	MfaCheck(ctx context.Context, acc *model.Account, mfa *model.MfaData) error
+	CompleteRegistration(ctx context.Context, account *model.Account, subscriptionID string, sessionID string, tokenHash string) error
+	GetUnfinishedSignupOrPostAccount(ctx context.Context, email, password string, subscriptionID string, sessionID string) (*model.Account, error)
+	SendResetPasswordEmail(ctx context.Context, email string) error
+	VerifyPasswordReset(ctx context.Context, tokenValue, newPassword string, mfa *model.MfaData) error
+	TotpEnable(ctx context.Context, accountId string) (*model.TOTPNew, error)
+	TotpConfirm(ctx context.Context, accountId, otp string) (*model.TOTPBackup, error)
+	TotpDisable(ctx context.Context, accountId, otp string) (*model.Account, error)
+	VerifyTotp(ctx context.Context, accountId, otp, action string) (*model.Account, error)
+	RequestEmailVerificationOTP(ctx context.Context, accountId string) error
+	VerifyEmailOTP(ctx context.Context, accountId, otp string) error
+}
+
+// ProfileServicer defines the interface for managing DNS profiles
+type ProfileServicer interface {
+	GetProfile(ctx context.Context, accountId, profileId string) (*model.Profile, error)
+	GetProfiles(ctx context.Context, accountId string) ([]model.Profile, error)
+	CreateProfile(ctx context.Context, name, accountId string) (*model.Profile, error)
+	UpdateProfile(ctx context.Context, accountId, profileId string, updates []model.ProfileUpdate) (*model.Profile, error)
+	DeleteProfile(ctx context.Context, accountId, profileId string, removeLast bool) error
+
+	// Query logs
+	GetProfileQueryLogs(ctx context.Context, accountId, profileId, status, timespan, deviceId, search, sortBy string, page, limit int) ([]model.QueryLog, error)
+	GetProfileQueryLogDevices(ctx context.Context, accountId, profileId string) ([]model.QueryLogDevice, error)
+	DownloadProfileQueryLogs(ctx context.Context, accountId, profileId string, page, limit int) ([]model.QueryLog, error)
+	DeleteProfileQueryLogs(ctx context.Context, accountId, profileId string) error
+
+	// Statistics
+	GetStatistics(ctx context.Context, accountId, profileId, timespan string) ([]model.StatisticsAggregated, error)
+
+	// Custom Rules
+	DeleteCustomRule(ctx context.Context, accountId, profileId, customRuleId string) error
+	CreateCustomRule(ctx context.Context, accountId, profileId, action, value string) error
+	CreateCustomRulesBulk(ctx context.Context, accountId, profileId, action string, values []string) (*profile.BulkCustomRuleResult, error)
+	UpdateCustomRule(ctx context.Context, accountId, profileId, customRuleId string, patch profile.CustomRulePatch) (*model.CustomRule, error)
+	ReorderCustomRules(ctx context.Context, accountId, profileId string, orderedIds []string) error
+	ApplyCustomRuleGroupOps(ctx context.Context, accountId, profileId string, ops []profile.CustomRuleGroupOp) error
+	ReorderCustomRuleGroups(ctx context.Context, accountId, profileId, action string, orderedNames []string) error
+
+	// Blocklists
+	EnableBlocklists(ctx context.Context, accountId, profileId string, blocklistIds []string) error
+	DisableBlocklists(ctx context.Context, accountId, profileId string, blocklistIds []string) error
+
+	// Services (ASN presets)
+	EnableServices(ctx context.Context, accountId, profileId string, serviceIds []string) error
+	DisableServices(ctx context.Context, accountId, profileId string, serviceIds []string) error
+
+	// Export / Import
+	Export(ctx context.Context, accountId, scope string, profileIds []string, currentPassword, reauthToken *string, mfa *model.MfaData) (*model.ExportEnvelope, error)
+	Import(ctx context.Context, accountId, mode string, payload *model.ExportEnvelope, currentPassword, reauthToken *string, mfa *model.MfaData) (*profile.ImportResult, error)
+}
+
+// QueryLogsServicer defines the interface for managing query logs
+// Note: QueryLogsServicer is not part of the Servicer interface as ProfileServicer covers its operations
+type QueryLogsServicer interface {
+	GetProfileQueryLogs(ctx context.Context, profileId string, retention model.Retention, status, timespan, deviceId, search, sortBy string, page, limit int) ([]model.QueryLog, error)
+	GetProfileQueryLogDevices(ctx context.Context, profileId string, retention model.Retention) ([]model.QueryLogDevice, error)
+	DownloadProfileQueryLogs(ctx context.Context, profileId string, retention model.Retention, page, limit int) ([]model.QueryLog, error)
+	DeleteProfileQueryLogs(ctx context.Context, profileId string) error
+}
+
+type AppleServicer interface {
+	GenerateMobileConfig(ctx context.Context, req requests.MobileConfigReq, accountId string, genLink bool) (data []byte, link string, err error)
+}
+
+type BlocklistServicer interface {
+	GetBlocklist(ctx context.Context, filter map[string]any, sortBy string) ([]*model.Blocklist, error)
+}
+
+type SubscriptionServicer interface {
+	GetSubscription(ctx context.Context, accountId string) (*model.Subscription, error)
+	UpdateSubscription(ctx context.Context, accountId string, updates []model.SubscriptionUpdate) (*model.Subscription, error)
+	CreateSubscriptionFromPreauth(ctx context.Context, accountId string, preauth *model.Preauth) error
+	DeleteSubscriptionByAccountId(ctx context.Context, accountId string) error
+	AddPASession(ctx context.Context, session *model.PASession) error
+	RotatePASessionID(ctx context.Context, oldID string) (string, error)
+	ValidateAndGetPreauth(ctx context.Context, sessionID string) (*model.Preauth, error)
+	UpdateSubscriptionFromPASession(ctx context.Context, sub *model.Subscription, sessionID string, subID string) error
+}
+
+// DeleteAccount deletes account with all connected data including sessions
+func (s *Service) DeleteAccount(ctx context.Context, accountId string, req requests.AccountDeletionRequest, mfa *model.MfaData) error {
+	if err := s.AccountServicer.DeleteAccount(ctx, accountId, req, mfa); err != nil {
+		return err
+	}
+	return s.DeleteSessionsByAccountID(ctx, accountId)
+}
+
+// GenerateDeletionCode generates a deletion code for account deletion
+func (s *Service) GenerateDeletionCode(ctx context.Context, accountId string) (*responses.DeletionCodeResponse, error) {
+	return s.AccountServicer.GenerateDeletionCode(ctx, accountId)
+}

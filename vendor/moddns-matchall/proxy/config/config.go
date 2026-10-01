@@ -1,0 +1,565 @@
+package config
+
+import (
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/ivpn/dns/libs/cache"
+	"github.com/ivpn/dns/proxy/model"
+)
+
+// Response modes for the rate-limit layers (RATELIMIT_PER_IP_RESPONSE,
+// RATELIMIT_PER_PROFILE_RESPONSE).
+const (
+	RateLimitResponseDrop   = "drop"
+	RateLimitResponseRefuse = "refuse"
+)
+
+// Defaults for the profile settings cache and the Redis client.
+const (
+	defaultProfileSettingsCacheTTL = 30 * time.Second
+	// defaultProfileSettingsCacheSize counts profiles, not bytes: stale entries are
+	// kept until evicted, and an entry holds the profile's custom rules, so a
+	// profile at the 10k-rule ceiling is a few MB while a typical one is a few KB.
+	defaultProfileSettingsCacheSize = 20_000
+	// defaultCacheCommandTimeout suits a PoP-local replica: one dial, read or
+	// write may take at most this long, with a single retry.
+	defaultCacheCommandTimeout = time.Second
+)
+
+// Config represents the application configuration
+type Config struct {
+	Server              *ServerConfig
+	Services            *ServicesConfig
+	Filtering           *FilteringConfig
+	Cache               *cache.Config
+	DNSCache            *DNSCacheConfig
+	CollectorQueryLogs  CollectorConfig
+	CollectorStatistics CollectorConfig
+	Emitter             *EmitterConfig
+	Upstream            *UpstreamConfig
+	PlainDNS            *PlainDNSConfig
+	TLS                 *TLSConfig
+	DoH                 *DoHConfig
+	DoT                 *DoTConfig
+	DoQ                 *DoQConfig
+	Sentry              *SentryConfig
+	Log                 *LogConfig
+	RateLimit           *RateLimitConfig
+	Metrics             *MetricsConfig
+	Rebinding           *RebindingConfig
+	TrustedProxies      []string
+	ProfileIDMinLength  int
+}
+
+// RebindingConfig configures DNS rebinding protection (block answers where a public
+// name resolves to a private/loopback/link-local IP). The per-profile opt-in
+// toggle lives in Redis; this is the global operator config.
+type RebindingConfig struct {
+	Enabled       bool     // REBINDING_PROTECTION_ENABLED (master switch, default true)
+	BlockCGNAT    bool     // REBINDING_BLOCK_CGNAT - block 100.64.0.0/10 (default false, opt-in)
+	BlockNAT64    bool     // REBINDING_BLOCK_NAT64 - block 64:ff9b::/96 (default false, opt-in)
+	AllowSuffixes []string // REBINDING_ALLOW_SUFFIXES - CSV; names with these suffixes are never blocked
+}
+
+// DNSCacheConfig configures the vendor (AdGuard) DNS response cache.
+type DNSCacheConfig struct {
+	Enabled    bool   // DNS_CACHE_ENABLED (default false)
+	Size       int    // DNS_CACHE_SIZE - per-upstream entries (default 256000)
+	SizeBytes  int    // DNS_CACHE_SIZE_BYTES - max bytes (default 0 = unlimited)
+	MinTTL     uint32 // DNS_CACHE_MIN_TTL (default 0)
+	MaxTTL     uint32 // DNS_CACHE_MAX_TTL (default 0 = no cap)
+	Optimistic bool   // DNS_CACHE_OPTIMISTIC (default false)
+}
+
+// Rate limit response modes.
+// RateLimitConfig holds rate limiter settings.
+type RateLimitConfig struct {
+	PerIPEnabled       bool
+	PerIPRate          int
+	PerIPBurst         int
+	PerIPResponse      string // "drop" (default) or "refuse"
+	PerProfileEnabled  bool
+	PerProfileRate     int
+	PerProfileBurst    int
+	PerProfileResponse string // "drop" or "refuse" (default)
+	MaxBuckets         int    // cap per bucket store
+	IPv6PrefixLen      int    // prefix length IPv6 clients are grouped by
+}
+
+// MetricsConfig holds Prometheus metrics server settings.
+type MetricsConfig struct {
+	Port int
+}
+
+// LogConfig represents the logging configuration
+type LogConfig struct {
+	AdGuardLogLevel string
+	ZerologLevel    string
+}
+
+// SentryConfig represents the Sentry configuration
+type SentryConfig struct {
+	DSN         string
+	Environment string
+	Release     string
+}
+
+// ServerConfig represents the server configuration
+type ServerConfig struct {
+	Names                   []string // SERVER_NAME: comma-separated list of host server names (e.g. "dns.moddns.net,ams1.dns.moddns.net")
+	DnsCheckDomain          string
+	DnsCheckPort            string
+	ProfileSettingsCacheTTL time.Duration
+	// ProfileSettingsCacheSize bounds the in-process settings cache (LRU, in
+	// profiles); entries past the TTL stay until evicted and serve as
+	// last-known-good. PROFILE_SETTINGS_CACHE_SIZE.
+	ProfileSettingsCacheSize int
+	MaxGoroutines            uint // MAX_GOROUTINES - cap on concurrent request-processing goroutines (0 disables)
+}
+
+// ServicesConfig configures ASN-based services blocking.
+type ServicesConfig struct {
+	CatalogPath        string
+	CatalogReloadEvery time.Duration
+	GeoIPASNDBPath     string
+}
+
+// FilteringConfig holds global filter master switches. These are operator-level
+// incident-response knobs, never exposed per-profile.
+type FilteringConfig struct {
+	CNAMEUncloakingEnabled bool // CNAME_UNCLOAKING_ENABLED (default true; only an explicit "false"/"0" disables)
+}
+
+// UpstreamConfig represents the upstream configuration
+type UpstreamConfig struct {
+	Upstreams map[string]string
+	Default   string
+}
+
+// TLSConfig represents the TLS configuration.
+// CertPaths and KeyPaths are parallel slices; each pair is loaded into tls.Config.Certificates
+// so Go's TLS stack can auto-select the right cert by SNI.
+type TLSConfig struct {
+	CertPaths []string
+	KeyPaths  []string
+}
+
+// PlainDNSConfig represents the plain DNS configuration
+type PlainDNSConfig struct {
+	UDPListenAddr int
+	TCPListenAddr int
+}
+
+// DoHConfig represents the DNS-over-HTTPS configuration
+type DoHConfig struct {
+	ListenAddr int
+}
+
+// DoTConfig represents the DNS-over-TLS configuration
+type DoTConfig struct {
+	ListenAddr int
+}
+
+// DoQConfig represents the DNS-over-QUIC configuration
+type DoQConfig struct {
+	ListenAddr int
+}
+
+// parseCSV splits a comma-separated string into trimmed, non-empty values.
+func parseCSV(s string) []string {
+	var out []string
+	for _, v := range strings.Split(s, ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// getEnvBool returns true if the environment variable is set to "true" or "1" (case-insensitive).
+func getEnvBool(env string) bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(env)))
+	return v == "true" || v == "1"
+}
+
+// getEnvBoolDefault returns the environment variable as a bool, falling back to
+// def when the variable is unset or empty (unlike getEnvBool, which defaults false).
+func getEnvBoolDefault(env string, def bool) bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(env)))
+	if v == "" {
+		return def
+	}
+	return v == "true" || v == "1"
+}
+
+// loadRebindingConfig reads DNS rebinding protection settings from environment
+// variables. The master switch defaults ON; CGNAT/NAT64 blocking are opt-in.
+func loadRebindingConfig() *RebindingConfig {
+	cfg := &RebindingConfig{
+		Enabled:       getEnvBoolDefault("REBINDING_PROTECTION_ENABLED", true),
+		BlockCGNAT:    getEnvBool("REBINDING_BLOCK_CGNAT"),
+		BlockNAT64:    getEnvBool("REBINDING_BLOCK_NAT64"),
+		AllowSuffixes: parseCSV(os.Getenv("REBINDING_ALLOW_SUFFIXES")),
+	}
+	if len(cfg.AllowSuffixes) == 0 {
+		cfg.AllowSuffixes = []string{".local", ".lan", ".home.arpa", ".internal"}
+	}
+	return cfg
+}
+
+// GetEnvInt returns the integer value of an environment variable
+func GetEnvInt(env string) (int, error) {
+	var envValInt int
+	envValStr := os.Getenv(env)
+	if envValStr == "" {
+		envValInt = 0
+	} else {
+		var err error
+		envValInt, err = strconv.Atoi(envValStr)
+		if err != nil {
+			return 0, err
+		}
+	}
+	return envValInt, nil
+}
+
+// LoadUpstreamConfig loads upstream DNS server configurations from environment variable
+func LoadUpstreamConfig(upstreamsEnv, defaultRecursorEnv string) (*UpstreamConfig, error) {
+	// Get the upstream configuration string
+	upstreamStr := os.Getenv(upstreamsEnv)
+	if upstreamStr == "" {
+		return nil, fmt.Errorf("%s not found in environment", upstreamsEnv)
+	}
+
+	defaultRecursor := os.Getenv(defaultRecursorEnv)
+	if upstreamStr == "" {
+		return nil, fmt.Errorf("%s not found in environment", defaultRecursorEnv)
+	}
+
+	// Parse the configuration
+	upstreams := make(map[string]string)
+	pairs := strings.Split(upstreamStr, ",")
+
+	for _, pair := range pairs {
+		kv := strings.Split(strings.TrimSpace(pair), "=")
+		if len(kv) != 2 {
+			return nil, fmt.Errorf("invalid upstream configuration format: %s", pair)
+		}
+		upstreams[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
+	}
+
+	if len(upstreams) == 0 {
+		return nil, fmt.Errorf("no upstream configurations found")
+	}
+
+	return &UpstreamConfig{
+		Upstreams: upstreams,
+		Default:   defaultRecursor,
+	}, nil
+}
+
+// loadDNSCacheConfig reads DNS response cache settings from environment variables.
+func loadDNSCacheConfig() *DNSCacheConfig {
+	cfg := &DNSCacheConfig{
+		Enabled:    getEnvBool("DNS_CACHE_ENABLED"),
+		Size:       256000,
+		Optimistic: getEnvBool("DNS_CACHE_OPTIMISTIC"),
+	}
+	if v := os.Getenv("DNS_CACHE_SIZE"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			cfg.Size = parsed
+		}
+	}
+	if v := os.Getenv("DNS_CACHE_SIZE_BYTES"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed >= 0 {
+			cfg.SizeBytes = parsed
+		}
+	}
+	if v := os.Getenv("DNS_CACHE_MIN_TTL"); v != "" {
+		if parsed, err := strconv.ParseUint(v, 10, 32); err == nil {
+			cfg.MinTTL = uint32(parsed)
+		}
+	}
+	if v := os.Getenv("DNS_CACHE_MAX_TTL"); v != "" {
+		if parsed, err := strconv.ParseUint(v, 10, 32); err == nil {
+			cfg.MaxTTL = uint32(parsed)
+		}
+	}
+	return cfg
+}
+
+// New creates a new Config instance
+func New() (*Config, error) {
+	trustedProxies := []string{"10.5.0.0/16"}
+	if env := strings.TrimSpace(os.Getenv("TRUSTED_PROXIES")); env != "" {
+		candidates := strings.Split(env, ",")
+		trustedProxies = trustedProxies[:0]
+		for _, c := range candidates {
+			if cidr := strings.TrimSpace(c); cidr != "" {
+				trustedProxies = append(trustedProxies, cidr)
+			}
+		}
+		if len(trustedProxies) == 0 {
+			trustedProxies = []string{"10.5.0.0/16"}
+		}
+	}
+
+	// Profile ID min length (default 10)
+	profileIdMinLen := 10
+	if v := os.Getenv("PROFILE_ID_MIN_LENGTH"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed < 64 { // bound
+			profileIdMinLen = parsed
+		}
+	}
+	udpListenAddr, err := GetEnvInt("PLAIN_DNS_UDP_LISTEN_ADDR")
+	if err != nil {
+		return nil, err
+	}
+
+	tcpListenAddr, err := GetEnvInt("PLAIN_DNS_TCP_LISTEN_ADDR")
+	if err != nil {
+		return nil, err
+	}
+
+	dohListenAddr, err := GetEnvInt("DOH_LISTEN_ADDR")
+	if err != nil {
+		return nil, err
+	}
+
+	dotListenAddr, err := GetEnvInt("DOT_LISTEN_ADDR")
+	if err != nil {
+		return nil, err
+	}
+
+	doqListenAddr, err := GetEnvInt("DOQ_LISTEN_ADDR")
+	if err != nil {
+		return nil, err
+	}
+
+	upstreamConfig, err := LoadUpstreamConfig("DNS_UPSTREAMS", "DNS_UPSTREAMS_DEFAULT")
+	if err != nil {
+		return nil, err
+	}
+
+	collectorQueryLogsCfg, err := NewCollectorConfig(model.TYPE_QUERY_LOGS)
+	if err != nil {
+		return nil, err
+	}
+	collectorStatisticsCfg, err := NewCollectorConfig(model.TYPE_STATISTICS)
+	if err != nil {
+		return nil, err
+	}
+
+	sinkCfg, err := NewSinkConfig(os.Getenv("EMITTER_SINK_TYPE"))
+	if err != nil {
+		return nil, err
+	}
+
+	dnsCheckDomain := os.Getenv("DNS_CHECK_DOMAIN")
+	if len(dnsCheckDomain) == 0 {
+		dnsCheckDomain = "test.moddns.net"
+	}
+
+	dnsCacheCfg := loadDNSCacheConfig()
+	rebindingCfg := loadRebindingConfig()
+	// Profile settings in-memory cache TTL ("0" disables expiration)
+	profileSettingsCacheTTL := defaultProfileSettingsCacheTTL
+	if v := os.Getenv("PROFILE_SETTINGS_CACHE_TTL"); v != "" {
+		parsed, err := time.ParseDuration(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid PROFILE_SETTINGS_CACHE_TTL %q: %w", v, err)
+		}
+		profileSettingsCacheTTL = parsed
+	}
+	profileSettingsCacheSize := loadProfileSettingsCacheSize()
+
+	// Get AdGuard log level (default to "info" if not set or invalid)
+	adguardLogLevel := strings.ToLower(os.Getenv("LOG_LEVEL_ADGUARD"))
+
+	// Get Zerolog log level (default to "info" if not set or invalid)
+	zerologLevel := strings.ToLower(os.Getenv("LOG_LEVEL_PROXY"))
+
+	servicesCatalogPath := strings.TrimSpace(os.Getenv("SERVICES_CATALOG_PATH"))
+	if servicesCatalogPath == "" {
+		servicesCatalogPath = "/opt/services/catalog.yml"
+	}
+	servicesCatalogReloadEveryStr := strings.TrimSpace(os.Getenv("SERVICES_CATALOG_RELOAD"))
+	if servicesCatalogReloadEveryStr == "" {
+		servicesCatalogReloadEveryStr = "5m"
+	}
+	servicesCatalogReloadEvery, err := time.ParseDuration(servicesCatalogReloadEveryStr)
+	if err != nil {
+		return nil, err
+	}
+
+	geoIPASNDBPath := strings.TrimSpace(os.Getenv("GEOIP_DB_ASN_FILE"))
+
+	cacheAddrs := strings.Split(os.Getenv("CACHE_ADDRESSES"), ",")
+
+	rlCfg := loadRateLimitConfig()
+
+	return &Config{
+		Server: &ServerConfig{
+			Names:                    parseCSV(os.Getenv("SERVER_NAME")),
+			DnsCheckDomain:           dnsCheckDomain,
+			DnsCheckPort:             os.Getenv("DNS_CHECK_PORT"),
+			ProfileSettingsCacheTTL:  profileSettingsCacheTTL,
+			ProfileSettingsCacheSize: profileSettingsCacheSize,
+			MaxGoroutines:            loadMaxGoroutines(),
+		},
+		Services: &ServicesConfig{
+			CatalogPath:        servicesCatalogPath,
+			CatalogReloadEvery: servicesCatalogReloadEvery,
+			GeoIPASNDBPath:     geoIPASNDBPath,
+		},
+		Filtering: &FilteringConfig{
+			CNAMEUncloakingEnabled: getEnvBoolDefault("CNAME_UNCLOAKING_ENABLED", true),
+		},
+		DNSCache:           dnsCacheCfg,
+		Rebinding:          rebindingCfg,
+		TrustedProxies:     trustedProxies,
+		ProfileIDMinLength: profileIdMinLen,
+		Cache: &cache.Config{
+			CommandTimeout:        loadCacheCommandTimeout(),
+			Address:               os.Getenv("CACHE_ADDRESS"),
+			FailoverAddresses:     cacheAddrs,
+			Username:              os.Getenv("CACHE_USERNAME"),
+			Password:              os.Getenv("CACHE_PASSWORD"),
+			FailoverPassword:      os.Getenv("CACHE_FAILOVER_PASSWORD"),
+			FailoverUsername:      os.Getenv("CACHE_FAILOVER_USERNAME"),
+			MasterName:            os.Getenv("CACHE_MASTER_NAME"),
+			TLSEnabled:            getEnvBool("CACHE_TLS_ENABLED"),
+			CertFile:              os.Getenv("CACHE_CERT_FILE"),
+			KeyFile:               os.Getenv("CACHE_KEY_FILE"),
+			CACertFile:            os.Getenv("CACHE_CA_CERT_FILE"),
+			TLSInsecureSkipVerify: getEnvBool("CACHE_TLS_INSECURE_SKIP_VERIFY"),
+		},
+		CollectorQueryLogs:  collectorQueryLogsCfg,
+		CollectorStatistics: collectorStatisticsCfg,
+		Emitter: &EmitterConfig{
+			Type:       os.Getenv("EMITTER_SINK_TYPE"),
+			SinkConfig: sinkCfg,
+		},
+		Upstream: upstreamConfig,
+		PlainDNS: &PlainDNSConfig{
+			UDPListenAddr: udpListenAddr,
+			TCPListenAddr: tcpListenAddr,
+		},
+		TLS: &TLSConfig{
+			CertPaths: parseCSV(os.Getenv("TLS_CERT_PATH")),
+			KeyPaths:  parseCSV(os.Getenv("TLS_KEY_PATH")),
+		},
+		DoH: &DoHConfig{
+			ListenAddr: dohListenAddr,
+		},
+		DoT: &DoTConfig{
+			ListenAddr: dotListenAddr,
+		},
+		DoQ: &DoQConfig{
+			ListenAddr: doqListenAddr,
+		},
+		Sentry: &SentryConfig{
+			DSN:         os.Getenv("SENTRY_DSN"),
+			Environment: os.Getenv("SENTRY_ENVIRONMENT"),
+			Release:     os.Getenv("SENTRY_RELEASE"),
+		},
+		Log: &LogConfig{
+			AdGuardLogLevel: adguardLogLevel,
+			ZerologLevel:    zerologLevel,
+		},
+		RateLimit: rlCfg,
+		Metrics:   loadMetricsConfig(),
+	}, nil
+}
+
+func loadRateLimitConfig() *RateLimitConfig {
+	cfg := &RateLimitConfig{
+		PerIPEnabled:       getEnvBool("RATELIMIT_PER_IP_ENABLED"),
+		PerIPRate:          2000,
+		PerIPBurst:         4000,
+		PerIPResponse:      RateLimitResponseDrop,
+		PerProfileEnabled:  os.Getenv("RATELIMIT_PER_PROFILE_ENABLED") != "false",
+		PerProfileRate:     600,
+		PerProfileBurst:    1000,
+		PerProfileResponse: RateLimitResponseRefuse,
+		MaxBuckets:         100_000,
+		IPv6PrefixLen:      64,
+	}
+	if v := strings.ToLower(strings.TrimSpace(os.Getenv("RATELIMIT_PER_IP_RESPONSE"))); v == RateLimitResponseDrop || v == RateLimitResponseRefuse {
+		cfg.PerIPResponse = v
+	}
+	if v := strings.ToLower(strings.TrimSpace(os.Getenv("RATELIMIT_PER_PROFILE_RESPONSE"))); v == RateLimitResponseDrop || v == RateLimitResponseRefuse {
+		cfg.PerProfileResponse = v
+	}
+	if v, err := strconv.Atoi(os.Getenv("RATELIMIT_PER_IP")); err == nil && v > 0 {
+		cfg.PerIPRate = v
+	}
+	if v, err := strconv.Atoi(os.Getenv("RATELIMIT_PER_IP_BURST")); err == nil && v > 0 {
+		cfg.PerIPBurst = v
+	}
+	if v, err := strconv.Atoi(os.Getenv("RATELIMIT_PER_PROFILE")); err == nil && v > 0 {
+		cfg.PerProfileRate = v
+	}
+	if v, err := strconv.Atoi(os.Getenv("RATELIMIT_PER_PROFILE_BURST")); err == nil && v > 0 {
+		cfg.PerProfileBurst = v
+	}
+	if v, err := strconv.Atoi(os.Getenv("RATELIMIT_MAX_BUCKETS")); err == nil && v > 0 {
+		cfg.MaxBuckets = v
+	}
+	if v, err := strconv.Atoi(os.Getenv("RATELIMIT_IPV6_PREFIX")); err == nil && v >= 1 && v <= 128 {
+		cfg.IPv6PrefixLen = v
+	}
+	return cfg
+}
+
+// loadMaxGoroutines reads MAX_GOROUTINES, the cap on concurrent
+// request-processing goroutines in the DNS proxy. "0" disables the cap.
+func loadMaxGoroutines() uint {
+	maxGoroutines := uint(10_000)
+	if v := os.Getenv("MAX_GOROUTINES"); v != "" {
+		if parsed, err := strconv.ParseUint(v, 10, 32); err == nil {
+			maxGoroutines = uint(parsed)
+		}
+	}
+	return maxGoroutines
+}
+
+func loadMetricsConfig() *MetricsConfig {
+	cfg := &MetricsConfig{Port: 9153}
+	if v, err := strconv.Atoi(os.Getenv("METRICS_PORT")); err == nil && v >= 0 {
+		cfg.Port = v
+	}
+	return cfg
+}
+
+// loadProfileSettingsCacheSize reads PROFILE_SETTINGS_CACHE_SIZE; a missing,
+// non-numeric or non-positive value keeps the default.
+func loadProfileSettingsCacheSize() int {
+	v := os.Getenv("PROFILE_SETTINGS_CACHE_SIZE")
+	if v == "" {
+		return defaultProfileSettingsCacheSize
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return defaultProfileSettingsCacheSize
+	}
+	return n
+}
+
+// loadCacheCommandTimeout reads CACHE_COMMAND_TIMEOUT (Go duration). Unset or
+// invalid keeps the default; "0" hands control back to the go-redis defaults.
+func loadCacheCommandTimeout() time.Duration {
+	v := os.Getenv("CACHE_COMMAND_TIMEOUT")
+	if v == "" {
+		return defaultCacheCommandTimeout
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d < 0 {
+		return defaultCacheCommandTimeout
+	}
+	return d
+}

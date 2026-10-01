@@ -1,0 +1,139 @@
+[
+  {
+    "name": "main",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "name": "account",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "name": "network",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "name": "drive",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "name": "mirrors",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "name": "console",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "name": "docs",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "name": "status",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "name": "blog",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "name": "dns",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "name": "dns-health",
+    "status": 200,
+    "ok": true,
+    "json_valid": true
+  },
+  {
+    "name": "status-api",
+    "status": 200,
+    "ok": true,
+    "json_valid": true
+  },
+  {
+    "name": "status-feed",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "name": "mirror-catalog",
+    "status": 200,
+    "ok": true,
+    "json_valid": true
+  },
+  {
+    "name": "mirror-health",
+    "status": 200,
+    "ok": true,
+    "json_valid": true
+  },
+  {
+    "name": "drive-status",
+    "status": 200,
+    "ok": true,
+    "json_valid": true,
+    "maintenance": false
+  },
+  {
+    "name": "drive-dav-auth",
+    "status": 401,
+    "ok": true
+  },
+  {
+    "name": "network-login",
+    "status": 302,
+    "ok": true,
+    "redirect_path": "/auth/oidc/login"
+  },
+  {
+    "name": "drive-login",
+    "status": 302,
+    "ok": true,
+    "redirect_path": "/apps/user_oidc/login/1"
+  },
+  {
+    "name": "dns-login",
+    "status": 302,
+    "ok": true,
+    "redirect_path": "https://auth.maximoraverse.org/application/o/authorize/"
+  },
+  {
+    "name": "mirror-login",
+    "status": 302,
+    "ok": true,
+    "redirect_path": "https://auth.maximoraverse.org/application/o/authorize/"
+  },
+  {
+    "name": "console-login",
+    "status": 302,
+    "ok": true,
+    "redirect_path": "https://auth.maximoraverse.org/application/o/authorize/"
+  },
+  {
+    "name": "docs-search",
+    "status": 200,
+    "ok": true,
+    "json_valid": true
+  },
+  {
+    "name": "dns-protected",
+    "status": 401,
+    "ok": true
+  },
+  {
+    "name": "mirror-protected",
+    "status": 401,
+    "ok": true
+  }
+]

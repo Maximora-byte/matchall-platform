@@ -1,0 +1,17 @@
+[
+  {
+    "update": "blocklists",
+    "updates": [
+      {
+        "q": {},
+        "u": {
+          "$rename": {
+            "last_modified": "last_updated"
+          }
+        },
+        "multi": true
+      }
+    ],
+    "writeConcern": { "w": "majority" }
+  }
+]

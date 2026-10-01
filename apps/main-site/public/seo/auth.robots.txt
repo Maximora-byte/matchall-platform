@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /$
+Allow: /contact$
+Allow: /privacy$
+Allow: /terms$
+Allow: /refund$
+Allow: /pricing$
+Disallow: /if/
+Disallow: /application/
+Disallow: /api/
+Disallow: /portal
+Disallow: /login
+Disallow: /register
+Sitemap: https://auth.maximoraverse.org/sitemap.xml

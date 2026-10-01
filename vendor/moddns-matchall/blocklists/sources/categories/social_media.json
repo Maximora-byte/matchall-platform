@@ -1,0 +1,14 @@
+[
+  {
+    "blocklist_id": "hagezi_social",
+    "name": "Hagezi Social Media",
+    "description": "Blocks social media platforms and related tracking domains.",
+    "source_url": "https://gitlab.com/hagezi/mirror/-/raw/main/dns-blocklists/wildcard/social-onlydomains.txt",
+    "homepage": "https://github.com/hagezi/dns-blocklists",
+    "syntax": "domains",
+    "kind": "category",
+    "category": "social_media",
+    "tags": ["category", "social_media", "hagezi"],
+    "schedule": "30 * * * *"
+  }
+]

@@ -1,0 +1,16 @@
+services:
+  reverse-proxy:
+    image: nginx:1.27.1
+    restart: always
+    container_name: reverse-proxy
+    ports:
+      - 80:80
+      # - 443:443 # - taken by proxy currently
+    volumes:
+      - ./dev/bootstrap/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./dev/certs:/etc/nginx/certs
+    networks:
+      - dnsnetwork
+    depends_on:
+      - api
+      - frontend

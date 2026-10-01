@@ -1,0 +1,11 @@
+publish_matchall:
+  image: python:3.13-slim
+  rules: [{if: '$CI_COMMIT_TAG'}]
+  variables:
+    MATCHALL_PROJECT: your-project
+    MATCHALL_VERSION: $CI_COMMIT_TAG
+    MATCHALL_ARTIFACT: dist/app.zip
+  script:
+    - python -c "import urllib.request;urllib.request.urlretrieve('https://mirrors.maximoraverse.org/static/devkit/publish.py','/tmp/publish.py')"
+    - echo "bcb2805c465eaa4fe15fb4466cce0a4fc293a7bb56abba9c4f7709e5868f40bf  /tmp/publish.py" | sha256sum -c -
+    - python /tmp/publish.py

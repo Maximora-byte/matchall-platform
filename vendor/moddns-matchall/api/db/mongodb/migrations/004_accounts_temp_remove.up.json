@@ -1,0 +1,30 @@
+[
+  {
+    "update": "accounts",
+    "updates": [
+      {
+        "q": {
+          "temporary": false
+        },
+        "u": {
+          "$unset": {
+            "temporary": "",
+            "valid_until": ""
+          }
+        },
+        "multi": true
+      }
+    ]
+  },
+  {
+    "delete": "accounts",
+    "deletes": [
+      {
+        "q": {
+          "temporary": true
+        },
+        "limit": 0
+      }
+    ]
+  }
+]

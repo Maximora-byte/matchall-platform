@@ -1,0 +1,354 @@
+{
+  servers {
+    protocols h1 h2
+  }
+}
+
+(site_headers) {
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "SAMEORIGIN"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    -Server
+  }
+}
+
+mirrors.maximoraverse.org {
+  encode zstd gzip
+  import site_headers
+
+  @blocked_paths path /.env /.git* /.vscode* /debug* /docs /openapi.json /redoc
+  handle @blocked_paths {
+    respond 404
+  }
+
+  @static path /static/*
+  header @static Cache-Control "public, max-age=3600"
+
+  @downloads path /download/*
+  header @downloads Cache-Control "no-store"
+
+  reverse_proxy mirrors:8000
+}
+
+blog.maximoraverse.org {
+  encode zstd gzip
+  import site_headers
+
+  root * /srv/fuwari
+  file_server
+}
+
+drive.maximoraverse.org {
+  encode zstd gzip
+  import site_headers
+
+  @drive_old_sw path /sw.js /service-worker.js
+  handle @drive_old_sw {
+    root * /srv/brand
+    rewrite * /sw-reset.js
+    header Cache-Control "no-store, no-cache, must-revalidate"
+    header Service-Worker-Allowed "/"
+    file_server
+  }
+
+  @drive_home path /
+  handle @drive_home {
+    root * /srv/brand
+    rewrite * /drive-home.html
+    header Cache-Control "no-store"
+    file_server
+  }
+
+  @drive_brand_css path /brand.css
+  handle @drive_brand_css {
+    root * /srv/brand
+    rewrite * /matchall-entry.css
+    header Cache-Control "public, max-age=3600"
+    file_server
+  }
+
+  @drive_brand_core path /brand-core.css
+  handle @drive_brand_core {
+    root * /srv/brand
+    rewrite * /matchall-home.css
+    header Cache-Control "public, max-age=3600"
+    file_server
+  }
+
+  @drive_login {
+    method GET HEAD
+    path /login /login/ /index.php/login
+  }
+  handle @drive_login {
+    redir * /apps/user_oidc/login/1?redirectUrl=/apps/files/ 302
+  }
+
+  @drive_register path /register /register/
+  handle @drive_register {
+    redir https://auth.maximoraverse.org/if/flow/maximora-enrollment/ 302
+  }
+
+  @nextcloud_password_login {
+    method POST
+    path /login /index.php/login
+  }
+  handle @nextcloud_password_login {
+    respond "请使用 MatchAll 账户统一认证" 403
+  }
+
+  @terms path /terms /terms/
+  handle @terms {
+    root * /srv/drive
+    rewrite * /terms.html
+    header Cache-Control "public, max-age=300"
+    file_server
+  }
+
+  @privacy path /privacy /privacy/
+  handle @privacy {
+    root * /srv/drive
+    rewrite * /privacy.html
+    header Cache-Control "public, max-age=300"
+    file_server
+  }
+
+  @blocked_paths {
+    path /.env /.git* /.vscode* /api-docs* /api/swagger* /debug* /swagger* /trace.axd /v2/api-docs /v3/api-docs /wp-*
+  }
+  handle @blocked_paths {
+    respond 404
+  }
+
+  @no_store path / /index.html /admin* /manifest.json /service-worker.js /sw.js
+  header @no_store Cache-Control "no-store"
+
+  @carddav path /.well-known/carddav
+  handle @carddav {
+    redir https://{host}/remote.php/dav/ 301
+  }
+  @caldav path /.well-known/caldav
+  handle @caldav {
+    redir https://{host}/remote.php/dav/ 301
+  }
+
+  handle {
+    reverse_proxy nextcloud:80
+  }
+}
+
+auth.maximoraverse.org {
+  encode zstd gzip
+  import site_headers
+
+  @account_home path /
+  handle @account_home {
+    root * /srv/brand
+    rewrite * /account-home.html
+    header Cache-Control "no-store"
+    file_server
+  }
+
+  @account_css path /account.css
+  handle @account_css {
+    root * /srv/brand
+    rewrite * /account.css
+    header Cache-Control "public, max-age=3600"
+    file_server
+  }
+
+  @account_brand_core path /brand-core.css
+  handle @account_brand_core {
+    root * /srv/brand
+    rewrite * /matchall-home.css
+    header Cache-Control "public, max-age=3600"
+    file_server
+  }
+
+  @account_login path /login /login/
+  handle @account_login {
+    redir * /if/flow/default-authentication-flow/?next=/if/user/ 302
+  }
+
+  @account_register path /register /register/
+  handle @account_register {
+    redir * /if/flow/maximora-enrollment/ 302
+  }
+
+  @account_portal path /portal /portal/
+  handle @account_portal {
+    redir * /if/user/ 302
+  }
+
+  @account_contact path /contact /contact/
+  handle @account_contact {
+    root * /srv/drive
+    rewrite * /proxy-contact.html
+    header Cache-Control "public, max-age=300"
+    file_server
+  }
+
+  @account_privacy path /privacy /privacy/
+  handle @account_privacy {
+    root * /srv/drive
+    rewrite * /proxy-privacy.html
+    header Cache-Control "public, max-age=300"
+    file_server
+  }
+
+  @account_terms path /terms /terms/
+  handle @account_terms {
+    root * /srv/drive
+    rewrite * /proxy-terms.html
+    header Cache-Control "public, max-age=300"
+    file_server
+  }
+
+  @account_refund path /refund /refund/
+  handle @account_refund {
+    root * /srv/drive
+    rewrite * /proxy-refund.html
+    header Cache-Control "public, max-age=300"
+    file_server
+  }
+
+  @account_pricing path /pricing /pricing/
+  handle @account_pricing {
+    root * /srv/drive
+    rewrite * /proxy-pricing.html
+    header Cache-Control "public, max-age=300"
+    file_server
+  }
+
+  @account_legal_css path /legal.css
+  handle @account_legal_css {
+    root * /srv/drive
+    rewrite * /proxy-legal.css
+    header Cache-Control "public, max-age=3600"
+    file_server
+  }
+
+  handle {
+    reverse_proxy authentik-server:9000
+  }
+}
+
+maximoraverse.org, www.maximoraverse.org {
+  encode zstd gzip
+  import site_headers
+
+  root * /srv/nav
+  file_server
+}
+investment.maximoraverse.org {
+  encode zstd gzip
+  import site_headers
+
+  reverse_proxy investment:8765
+}
+
+proxyservice.maximoraverse.org {
+  encode zstd gzip
+  import site_headers
+
+  @proxy_home path /
+  handle @proxy_home {
+    root * /srv/brand
+    rewrite * /proxy-home.html
+    header Cache-Control "no-store"
+    file_server
+  }
+
+  @proxy_brand_css path /brand.css
+  handle @proxy_brand_css {
+    root * /srv/brand
+    rewrite * /matchall-entry.css
+    header Cache-Control "public, max-age=3600"
+    file_server
+  }
+
+  @proxy_brand_core path /brand-core.css
+  handle @proxy_brand_core {
+    root * /srv/brand
+    rewrite * /matchall-home.css
+    header Cache-Control "public, max-age=3600"
+    file_server
+  }
+
+  @proxy_login path /login /login/
+  handle @proxy_login {
+    redir * /auth/oidc/login 302
+  }
+
+  @proxy_register path /register /register/
+  handle @proxy_register {
+    redir https://auth.maximoraverse.org/if/flow/maximora-enrollment/ 302
+  }
+
+  @proxy_app path /app /app/*
+  handle @proxy_app {
+    uri strip_prefix /app
+    reverse_proxy xboard:7001
+  }
+
+  @proxy_terms path /terms /terms/
+  handle @proxy_terms {
+    root * /srv/drive
+    rewrite * /proxy-terms.html
+    header Cache-Control "public, max-age=300"
+    file_server
+  }
+
+  @proxy_contact path /contact /contact/
+  handle @proxy_contact {
+    root * /srv/drive
+    rewrite * /proxy-contact.html
+    header Cache-Control "public, max-age=300"
+    file_server
+  }
+
+  @proxy_privacy path /privacy /privacy/
+  handle @proxy_privacy {
+    root * /srv/drive
+    rewrite * /proxy-privacy.html
+    header Cache-Control "public, max-age=300"
+    file_server
+  }
+
+  @proxy_refund path /refund /refund/
+  handle @proxy_refund {
+    root * /srv/drive
+    rewrite * /proxy-refund.html
+    header Cache-Control "public, max-age=300"
+    file_server
+  }
+
+  @proxy_pricing path /pricing /pricing/
+  handle @proxy_pricing {
+    root * /srv/drive
+    rewrite * /proxy-pricing.html
+    header Cache-Control "public, max-age=300"
+    file_server
+  }
+
+  @proxy_legal_css path /legal.css
+  handle @proxy_legal_css {
+    root * /srv/drive
+    rewrite * /proxy-legal.css
+    header Cache-Control "public, max-age=3600"
+    file_server
+  }
+
+  handle {
+    reverse_proxy xboard:7001
+  }
+}
+
+http://64.110.101.75 {
+  encode zstd gzip
+  import site_headers
+
+  reverse_proxy xboard:7001
+}

@@ -1,0 +1,2 @@
+document.querySelectorAll('[data-copy]').forEach(button=>button.addEventListener('click',async()=>{const input=document.getElementById(button.dataset.copy);try{await navigator.clipboard.writeText(input.value);document.getElementById('copy-status').textContent='已复制';}catch{input.focus();input.select();document.getElementById('copy-status').textContent='请手动复制选中的地址';}}));
+document.querySelectorAll('[data-confirm]').forEach(form=>form.addEventListener('submit',event=>{if(!confirm(form.dataset.confirm))event.preventDefault();}));

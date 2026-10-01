@@ -1,0 +1,22 @@
+[Unit]
+Description=MatchAll Mirrors Guangzhou edge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/srv/mirror-edge
+Environment=EDGE_DATA_DIR=/srv/mirror-edge
+Environment=EDGE_SECRET_FILE=/etc/mirror-edge/download.secret
+ExecStart=/srv/mirror-edge/venv/bin/uvicorn edge_server:app --host 127.0.0.1 --port 18080 --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/mirror-edge
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,6 @@
+[
+    {
+      "dropIndexes": "sessions",
+      "index": "token_unique"
+    }
+]

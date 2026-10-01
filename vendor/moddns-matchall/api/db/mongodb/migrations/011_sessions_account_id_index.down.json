@@ -1,0 +1,6 @@
+[
+    {
+      "dropIndexes": "sessions",
+      "index": "account_id"
+    }
+]

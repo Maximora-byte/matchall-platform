@@ -1,0 +1,2 @@
+FROM matchall-hub:before-legal-20260926
+COPY templates /app/templates

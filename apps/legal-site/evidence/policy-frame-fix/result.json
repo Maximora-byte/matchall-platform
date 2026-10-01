@@ -1,0 +1,15 @@
+{
+  "test": "unchanged production consent frontend in browser-only auth-origin harness, live policy documents",
+  "widths": [
+    1280,
+    390
+  ],
+  "terms": "visible",
+  "privacy": "visible",
+  "countdown": "passed",
+  "unlock": "passed",
+  "checkboxPersists": true,
+  "consoleErrors": [],
+  "untrustedOriginBlocked": true,
+  "limitation": "Real authentication reached CAPTCHA only; no CAPTCHA bypass or full account login/enrollment executed"
+}

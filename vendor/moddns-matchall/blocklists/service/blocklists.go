@@ -1,0 +1,484 @@
+package service
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/ivpn/dns/blocklists/internal/downloader"
+	"github.com/ivpn/dns/blocklists/internal/extractor"
+	"github.com/ivpn/dns/blocklists/internal/metrics"
+	"github.com/ivpn/dns/blocklists/model"
+	"github.com/rs/zerolog/log"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+const (
+	jsonExt           = ".json"
+	processingTimeout = 2 * time.Minute
+)
+
+// errDownloadTooLarge signals that a source's response body exceeded the
+// configured size limit — a truncated/abusive source rather than a successfully
+// fetched list. It aliases downloader.ErrTooLarge so processBlocklist can map an
+// over-size download to the "truncated" validation-rejected metric. The size
+// limit itself is configured via downloader.Config.MaxBodySize.
+var errDownloadTooLarge = downloader.ErrTooLarge
+
+func (s *Service) ReadSources() ([]model.BlocklistMetadata, error) {
+	err := filepath.Walk(s.Cfg.Updater.SourcesDir, s.visit)
+	if err != nil {
+		log.Err(err).Str("sources_dir", s.Cfg.Updater.SourcesDir).Msg("Error walking the sources directory")
+		return nil, err
+	}
+	// An empty or partially mounted sources directory walks cleanly; treat too
+	// few parsed sources as a fatal misconfiguration rather than an empty set,
+	// which downstream would read as "purge everything" (spec H4).
+	if min := s.minSources(); len(s.Blocklists) < min {
+		return nil, fmt.Errorf("parsed %d blocklist sources from %s, need at least %d — refusing to start",
+			len(s.Blocklists), s.Cfg.Updater.SourcesDir, min)
+	}
+	return s.Blocklists, nil
+}
+
+// minSources returns the configured minimum source count, never below 1 so a
+// zero-value config still refuses to treat an empty source set as valid.
+func (s *Service) minSources() int {
+	if s.Cfg.Updater != nil && s.Cfg.Updater.MinSources > 1 {
+		return s.Cfg.Updater.MinSources
+	}
+	return 1
+}
+
+// defaultMaxStalePurge caps a purge run when the config carries no explicit
+// limit (zero value), mirroring config.defaultMaxStalePurge.
+const defaultMaxStalePurge = 5
+
+// maxStalePurge returns the configured purge cap, falling back to a safe
+// default so a zero-value config can never mass-delete.
+func (s *Service) maxStalePurge() int {
+	if s.Cfg.Updater != nil && s.Cfg.Updater.MaxStalePurge >= 1 {
+		return s.Cfg.Updater.MaxStalePurge
+	}
+	return defaultMaxStalePurge
+}
+
+func (s *Service) visit(path string, info os.FileInfo, err error) error {
+	if err != nil {
+		return err
+	}
+
+	if info.IsDir() {
+		return nil
+	}
+
+	if filepath.Ext(path) == jsonExt {
+		blocklistSources, err := NewSources(path)
+		if err != nil {
+			log.Err(err).Str("path", path).Msg("Error reading blocklist source file")
+			return err
+		}
+		s.Blocklists = append(s.Blocklists, blocklistSources...)
+	}
+
+	return nil
+}
+
+func (s *Service) Setup(sources []model.BlocklistMetadata) error {
+	for _, src := range sources {
+		// Create a closure that captures the current value of source. The
+		// updater's distributed locker already holds the source lock when this
+		// runs; RefreshDue adds the freshness backstop for ticks a peer just
+		// completed.
+		blocklistFunc := func() (*model.BlocklistMetadata, error) {
+			return s.RefreshDue(src)
+		}
+		if err := s.Updater.Setup(src, blocklistFunc); err != nil {
+			log.Err(err).Str("source", src.Name).Msg("Failed to setup updater")
+			return err
+		}
+	}
+	return nil
+}
+
+// ProcessBlocklist downloads, validates and publishes a single blocklist,
+// recording update metrics (duration, success/failure, last-success timestamp).
+func (s *Service) ProcessBlocklist(metadata model.BlocklistMetadata) (*model.BlocklistMetadata, error) {
+	source := metadata.BlocklistID
+	start := time.Now()
+
+	result, err := s.processBlocklist(metadata)
+
+	s.Metrics.RecordDuration(source, time.Since(start))
+	if err != nil {
+		s.Metrics.RecordUpdate(source, metrics.StatusFailure)
+		return nil, err
+	}
+	s.Metrics.RecordUpdate(source, metrics.StatusSuccess)
+	s.Metrics.SetLastSuccess(source, time.Now())
+	return result, nil
+}
+
+func (s *Service) processBlocklist(metadata model.BlocklistMetadata) (*model.BlocklistMetadata, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), processingTimeout)
+	defer cancel()
+
+	if metadata.Name == "" {
+		metadata.Name = "My First Blocklist"
+	}
+
+	// Download and process data first to know the total size. The shared
+	// downloader (per-host throttling, global concurrency cap, retry/backoff) is
+	// always set by service.New; the blocklist ID is the retry-metric label.
+	blocklistBytes, err := s.Downloader.Fetch(ctx, metadata.BlocklistID, metadata.SourceUrl)
+	if err != nil {
+		if errors.Is(err, errDownloadTooLarge) {
+			s.Metrics.RecordValidationRejected(metadata.BlocklistID, metrics.ReasonTruncated)
+		}
+		log.Err(err).Str("source_url", metadata.SourceUrl).Msg("Failed to download blocklist")
+		return nil, err
+	}
+	s.Metrics.RecordDownloadBytes(metadata.BlocklistID, int64(len(blocklistBytes)))
+
+	// Strip a leading UTF-8 BOM so it does not corrupt the first header line
+	// (metadata extraction) or the first domain.
+	blocklistBytes = bytes.TrimPrefix(blocklistBytes, []byte("\uFEFF"))
+
+	extr, err := extractor.NewExtractor(metadata.BlocklistID)
+	if err != nil {
+		log.Err(err).Str("blocklist_id", metadata.BlocklistID).Msg("Failed to create extractor")
+		return nil, err
+	}
+
+	lastModified, version, numEntries, err := extr.ExtractMetadata(blocklistBytes)
+	if err != nil {
+		log.Err(err).Str("blocklist_id", metadata.BlocklistID).Msg("Failed to extract metadata")
+		return nil, err
+	}
+
+	domainsBytes, convRes, err := extr.Convert(blocklistBytes)
+	if err != nil {
+		log.Err(err).Str("blocklist_id", metadata.BlocklistID).Msg("Failed to convert blocklist")
+		return nil, err
+	}
+
+	const maxDomainsPerDoc = 100000
+
+	fltr := map[string]any{"blocklist_id": metadata.BlocklistID}
+	existingBlocklists, err := s.Store.GetContent(ctx, fltr)
+	if err != nil {
+		log.Err(err).Str("blocklist_id", metadata.BlocklistID).Msg("Failed to get blocklist content")
+		return nil, err
+	}
+	var removeOldContents bool
+	if len(existingBlocklists) > 0 {
+		removeOldContents = true
+	}
+
+	existingMetadata, err := s.Store.GetMetadata(ctx, fltr)
+	if err != nil {
+		log.Err(err).Str("blocklist_id", metadata.BlocklistID).Msg("Failed to get blocklist metadata")
+		return nil, err
+	}
+	switch len(existingMetadata) {
+	case 0:
+		metadata.ID = primitive.NewObjectID()
+	case 1:
+		metadata.ID = existingMetadata[0].ID
+	default:
+		log.Error().Str("blocklist_id", metadata.BlocklistID).Msg("number of blocklists found is not proper")
+		return nil, fmt.Errorf("number of blocklists found is not proper")
+	}
+
+	// Scan all lines into a single validated slice BEFORE persisting anything.
+	// A corrupt/truncated download fails the validation gate below, leaving the
+	// previously published Redis/Mongo data untouched.
+	validated, err := scanValidatedDomains(bytes.NewReader(domainsBytes))
+	if err != nil {
+		s.Metrics.RecordValidationRejected(metadata.BlocklistID, metrics.ReasonScanError)
+		log.Err(err).Str("blocklist_id", metadata.BlocklistID).Msg("Scan error while processing blocklist; aborting swap")
+		return nil, fmt.Errorf("scan blocklist %s: %w", metadata.BlocklistID, err)
+	}
+
+	totalDomains := len(validated)
+
+	// Validation gate: refuse to publish an empty or sharply-shrunken list.
+	if err := s.checkValidationGate(metadata.BlocklistID, existingMetadata, totalDomains, numEntries); err != nil {
+		return nil, err
+	}
+
+	// Exceptions pass the same shared validation gate as domains. They do not
+	// feed the shrink gate: the set is small and volatile, and losing it only
+	// under-suppresses, never over-blocks.
+	exceptions := make([]string, 0, len(convRes.Exceptions))
+	for _, d := range convRes.Exceptions {
+		if nd := extractor.NormalizeDomain(d); extractor.ValidDomain(nd) {
+			exceptions = append(exceptions, nd)
+		}
+	}
+
+	s.Metrics.SetDomainsExtracted(metadata.BlocklistID, totalDomains)
+	// Published every refresh, zeros included, so each series reflects the
+	// last successful conversion rather than holding a stale spike.
+	for _, rs := range []struct {
+		reason string
+		n      int
+	}{
+		{metrics.SkipRuleException, convRes.Stats.SkippedExceptions},
+		{metrics.SkipRuleBadfilter, convRes.Stats.SkippedBadfilter},
+		{metrics.SkipRuleModifier, convRes.Stats.SkippedModifiers},
+		{metrics.SkipRuleWildcard, convRes.Stats.SkippedWildcards},
+		{metrics.SkipRulePrefix, convRes.Stats.SkippedPrefixes},
+		{metrics.SkipRuleInvalid, convRes.Stats.SkippedInvalid},
+	} {
+		s.Metrics.SetRulesSkipped(metadata.BlocklistID, rs.reason, rs.n)
+	}
+	if numEntries > 0 {
+		// Source's own count (header or self-counted) — a divergence signal
+		// against the published count above.
+		s.Metrics.SetDeclaredEntries(metadata.BlocklistID, numEntries)
+	}
+
+	// Persist Mongo content chunks from the validated domains.
+	for i := 0; i < len(validated); i += maxDomainsPerDoc {
+		end := i + maxDomainsPerDoc
+		if end > len(validated) {
+			end = len(validated)
+		}
+		chunkIndex := i/maxDomainsPerDoc + 1
+		if _, err := s.saveChunk(ctx, metadata.BlocklistID, chunkIndex, validated[i:end]); err != nil {
+			log.Err(err).
+				Str("blocklist_id", metadata.BlocklistID).
+				Int("chunk", chunkIndex).
+				Msg("Failed to save chunk")
+			return nil, err
+		}
+	}
+
+	// Persist the exception domains as a single content document; the
+	// per-blocklist cleanup below covers it like any chunk.
+	if len(exceptions) > 0 {
+		exceptionsContent, err := model.NewBlocklistContent(metadata.BlocklistID, 1, exceptions)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create exceptions content: %w", err)
+		}
+		exceptionsContent.Kind = model.ContentKindExceptions
+		if err := s.Store.UpsertContent(ctx, *exceptionsContent); err != nil {
+			return nil, fmt.Errorf("failed to upsert exceptions content: %w", err)
+		}
+	}
+
+	// Publish the exception set BEFORE the main set so a reader never sees
+	// new blocks paired with the previous run's exception set; when there are
+	// no exceptions the companion key is removed.
+	if err := s.Cache.CreateOrUpdateBlocklistExceptions(ctx, metadata.BlocklistID, []byte(strings.Join(exceptions, "\n"))); err != nil {
+		return nil, err
+	}
+	s.Metrics.SetExceptionsExtracted(metadata.BlocklistID, len(exceptions))
+
+	// Publish the SAME validated domains to the Redis set the proxy reads.
+	data := []byte(strings.Join(validated, "\n"))
+	if err := s.Cache.CreateOrUpdateBlocklist(ctx, metadata.BlocklistID, data); err != nil {
+		return nil, err
+	}
+
+	metadata.LastModified = lastModified
+	metadata.Version = version
+	metadata.Entries = totalDomains
+	metadata.ExceptionEntries = len(exceptions)
+	metadata.Type = model.BlocklistTypePublic
+	metadata.UpdatedAt = time.Now().UTC()
+
+	// Remove old blocklist contents before the metadata upsert: updated_at
+	// asserts the refresh fully completed, so a failed cleanup must fail the
+	// run (and be retried at the next tick, whose content snapshot then sees
+	// both copies and heals the duplication). Redis already serves the new
+	// set at this point, which is fine — it is the live medium.
+	if removeOldContents {
+		existingIDs := make([]primitive.ObjectID, 0)
+		for _, existingBlocklist := range existingBlocklists {
+			existingIDs = append(existingIDs, existingBlocklist.ID)
+		}
+		fltr := map[string]any{"_id": existingIDs}
+		if err := s.Store.Delete(ctx, fltr); err != nil {
+			log.Err(err).Str("blocklist_id", metadata.BlocklistID).Msg("Failed to delete old blocklist contents")
+			return nil, err
+		}
+	}
+
+	if err := s.Store.UpsertMetadata(ctx, metadata); err != nil {
+		log.Err(err).Str("blocklist_id", metadata.BlocklistID).Msg("Failed to upsert blocklist metadata")
+		return nil, err
+	}
+
+	return &metadata, nil
+}
+
+// scanValidatedDomains reads the extractor's Convert output (one candidate
+// domain per line) and returns the normalized, validated domains. Convert is
+// the canonical, format-specific extractor for every source; this shared gate
+// then applies consistent normalization (BOM/CR/whitespace/trailing-dot strip,
+// lowercase) and validation, so the proxy-visible Redis set and the Mongo
+// content never contain comments, mixed case, CRLF artefacts or injected
+// non-domain junk. Invalid lines (incl. comment lines) are silently skipped.
+//
+// It relies on bufio.Scanner's default 64KB line cap (no legitimate domain
+// approaches it) and returns the scanner error so the caller can ABORT rather
+// than publish a truncated list: a single oversized line yields
+// bufio.ErrTooLong instead of silently dropping the rest of the source.
+func scanValidatedDomains(r io.Reader) ([]string, error) {
+	scanner := bufio.NewScanner(r)
+	validated := make([]string, 0)
+	for scanner.Scan() {
+		domain := extractor.NormalizeDomain(scanner.Text())
+		if domain == "" || !extractor.ValidDomain(domain) {
+			continue
+		}
+		validated = append(validated, domain)
+	}
+	return validated, scanner.Err()
+}
+
+// checkValidationGate decides whether a freshly-extracted blocklist may replace
+// the currently-published one. It rejects the swap (returning an error and
+// recording a metric) when the new list is empty, or — relative to the previous
+// run — shrinks by more than UpdaterConfig.ShrinkThreshold. The upstream header
+// count is used only as a warn-only sanity signal, since those counts are often
+// approximate or stale.
+func (s *Service) checkValidationGate(blocklistID string, existingMetadata []model.BlocklistMetadata, newCount, headerCount int) error {
+	if newCount == 0 {
+		s.Metrics.RecordValidationRejected(blocklistID, metrics.ReasonEmpty)
+		return fmt.Errorf("validation gate: blocklist %s produced 0 domains, aborting swap", blocklistID)
+	}
+
+	prev := 0
+	if len(existingMetadata) == 1 {
+		prev = existingMetadata[0].Entries
+	}
+	if prev > 0 {
+		minAllowed := int(float64(prev) * (1 - s.Cfg.Updater.ShrinkThreshold))
+		if newCount < minAllowed {
+			s.Metrics.RecordValidationRejected(blocklistID, metrics.ReasonShrink)
+			return fmt.Errorf("validation gate: blocklist %s shrank to %d domains (min allowed %d, previous %d), aborting swap",
+				blocklistID, newCount, minAllowed, prev)
+		}
+	}
+
+	// Warn-only: large divergence from the upstream header count may indicate a
+	// partial download even when the shrink gate passes.
+	if headerCount > 0 && newCount < headerCount/2 {
+		log.Warn().
+			Str("blocklist_id", blocklistID).
+			Int("extracted", newCount).
+			Int("header_count", headerCount).
+			Msg("Extracted domain count is far below the upstream header count")
+	}
+
+	return nil
+}
+
+// saveChunk saves a chunk of domains to MongoDB
+func (s *Service) saveChunk(ctx context.Context, blocklistID string, chunkIndex int, domains []string) (primitive.ObjectID, error) {
+	partialBlocklistContent, err := model.NewBlocklistContent(blocklistID, chunkIndex, domains)
+	if err != nil {
+		return primitive.NilObjectID, fmt.Errorf("failed to create blocklist content: %w", err)
+	}
+
+	if err := s.Store.UpsertContent(ctx, *partialBlocklistContent); err != nil {
+		return primitive.NilObjectID, fmt.Errorf("failed to upsert blocklist content: %w", err)
+	}
+
+	log.Debug().
+		Str("blocklist_id", blocklistID).
+		Int("chunk", chunkIndex).
+		Int("domains", len(domains)).
+		Msg("Saved blocklist chunk")
+
+	return partialBlocklistContent.ID, nil
+}
+
+// PurgeStale removes metadata and content for blocklists that are no longer
+// present in the current sources. This ensures that removed blocklists don't
+// linger in the database and get served by the API.
+func (s *Service) PurgeStale(sources []model.BlocklistMetadata) {
+	// A suspiciously small source set means the sources were not read
+	// correctly (e.g. empty mount), not that every blocklist was removed.
+	// Purging on it would delete all published blocklists (spec H4).
+	if min := s.minSources(); len(sources) < min {
+		log.Error().
+			Int("sources", len(sources)).
+			Int("min_sources", min).
+			Msg("Refusing to purge stale blocklists: source set below configured minimum")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), processingTimeout)
+	defer cancel()
+
+	sourceIDs := make([]string, 0, len(sources))
+	for _, src := range sources {
+		sourceIDs = append(sourceIDs, src.BlocklistID)
+	}
+
+	// Get all metadata currently in the database
+	allMetadata, err := s.Store.GetMetadata(ctx, map[string]any{})
+	if err != nil {
+		log.Err(err).Msg("Failed to get all blocklist metadata for stale check")
+		return
+	}
+
+	staleIDs := make([]string, 0)
+	sourceSet := make(map[string]struct{}, len(sourceIDs))
+	for _, id := range sourceIDs {
+		sourceSet[id] = struct{}{}
+	}
+	for _, meta := range allMetadata {
+		if _, exists := sourceSet[meta.BlocklistID]; !exists {
+			staleIDs = append(staleIDs, meta.BlocklistID)
+		}
+	}
+
+	if len(staleIDs) == 0 {
+		log.Debug().Msg("No stale blocklists to purge")
+		return
+	}
+
+	// Routine source removals retire a handful of lists at most. A larger
+	// stale set means this instance's source directory diverged from what the
+	// cluster published (e.g. mid-rollout config drift between nodes), and
+	// purging on it would delete lists peers still serve.
+	if max := s.maxStalePurge(); len(staleIDs) > max {
+		log.Error().
+			Strs("blocklist_ids", staleIDs).
+			Int("stale", len(staleIDs)).
+			Int("max_stale_purge", max).
+			Msg("Refusing to purge stale blocklists: stale count exceeds configured maximum")
+		return
+	}
+
+	log.Info().Strs("blocklist_ids", staleIDs).Msg("Purging stale blocklists")
+
+	for _, id := range staleIDs {
+		// Delete metadata
+		if err := s.Store.DeleteMetadata(ctx, map[string]any{"blocklist_id": id}); err != nil {
+			log.Err(err).Str("blocklist_id", id).Msg("Failed to delete stale metadata")
+		}
+		// Delete content
+		if err := s.Store.Delete(ctx, map[string]any{"blocklist_id": id}); err != nil {
+			log.Err(err).Str("blocklist_id", id).Msg("Failed to delete stale content")
+		}
+		// Delete from cache
+		if err := s.Cache.DeleteBlocklist(ctx, id); err != nil {
+			log.Err(err).Str("blocklist_id", id).Msg("Failed to delete stale blocklist from cache")
+		}
+	}
+
+	log.Info().Int("count", len(staleIDs)).Msg("Purged stale blocklists")
+}

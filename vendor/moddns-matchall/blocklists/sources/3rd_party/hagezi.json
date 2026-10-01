@@ -1,0 +1,62 @@
+[
+  {
+    "blocklist_id": "hagezi_multi_light",
+    "name": "Hagezi Multi LIGHT",
+    "description": "Hand brush - Cleans the Internet and protects your privacy! Blocks Ads, Tracking, Metrics and some Badware. A size-optimized version of the Multi NORMAL.",
+    "source_url": "https://gitlab.com/hagezi/mirror/-/raw/main/dns-blocklists/wildcard/light-onlydomains.txt",
+    "homepage": "https://github.com/hagezi/dns-blocklists",
+    "syntax": "domains",
+    "kind": "general",
+    "intensity": ["basic"],
+    "tags": ["hagezi", "basic"],
+    "schedule": "2 * * * *"
+  },
+  {
+    "blocklist_id": "hagezi_multi_normal",
+    "name": "Hagezi Multi NORMAL",
+    "description": "Broom - Cleans the Internet and protects your privacy! Blocks Ads, Affiliate, Tracking, Metrics, Telemetry, Phishing, Malware, Scam, Fake, Coins and other \"Crap\".",
+    "source_url": "https://gitlab.com/hagezi/mirror/-/raw/main/dns-blocklists/wildcard/multi-onlydomains.txt",
+    "homepage": "https://github.com/hagezi/dns-blocklists",
+    "syntax": "domains",
+    "kind": "general",
+    "intensity": [],
+    "tags": ["hagezi"],
+    "schedule": "6 * * * *"
+  },
+  {
+    "blocklist_id": "hagezi_multi_pro",
+    "name": "Hagezi Multi PRO",
+    "description": "Big broom - Cleans the Internet and protects your privacy! Blocks Ads, Affiliate, Tracking, Metrics, Telemetry, Phishing, Malware, Scam, Fake, Coins and other \"Crap\".",
+    "source_url": "https://gitlab.com/hagezi/mirror/-/raw/main/dns-blocklists/wildcard/pro-onlydomains.txt",
+    "homepage": "https://github.com/hagezi/dns-blocklists",
+    "syntax": "domains",
+    "kind": "general",
+    "intensity": ["comprehensive"],
+    "tags": ["hagezi", "comprehensive"],
+    "schedule": "10 * * * *"
+  },
+  {
+    "blocklist_id": "hagezi_multi_pro_plus",
+    "name": "Hagezi Multi PRO++",
+    "description": "Sweeper - Aggressive cleans the Internet and protects your privacy! Blocks Ads, Affiliate, Tracking, Metrics, Telemetry, Phishing, Malware, Scam, Fake, Coins and other \"Crap\".",
+    "source_url": "https://gitlab.com/hagezi/mirror/-/raw/main/dns-blocklists/wildcard/pro.plus-onlydomains.txt",
+    "homepage": "https://github.com/hagezi/dns-blocklists",
+    "syntax": "domains",
+    "kind": "general",
+    "intensity": [],
+    "tags": ["hagezi"],
+    "schedule": "14 * * * *"
+  },
+  {
+    "blocklist_id": "hagezi_multi_ultimate",
+    "name": "Hagezi Multi ULTIMATE",
+    "description": "Ultimate Sweeper - Strictly cleans the Internet and protects your privacy! Blocks Ads, Affiliate, Tracking, Metrics, Telemetry, Phishing, Malware, Scam, Free Hoster, Fake, Coins and other \"Crap\".",
+    "source_url": "https://gitlab.com/hagezi/mirror/-/raw/main/dns-blocklists/wildcard/ultimate-onlydomains.txt",
+    "homepage": "https://github.com/hagezi/dns-blocklists",
+    "syntax": "domains",
+    "kind": "general",
+    "intensity": ["restrictive"],
+    "tags": ["hagezi", "restrictive"],
+    "schedule": "18 * * * *"
+  }
+]

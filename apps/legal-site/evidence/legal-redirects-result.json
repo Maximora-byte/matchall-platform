@@ -1,0 +1,146 @@
+[
+  {
+    "old": "https://auth.maximoraverse.org/privacy",
+    "new": "https://www.maximoraverse.org/privacy/policy/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://auth.maximoraverse.org/privacy/",
+    "new": "https://www.maximoraverse.org/privacy/policy/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://auth.maximoraverse.org/terms",
+    "new": "https://www.maximoraverse.org/terms/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://auth.maximoraverse.org/terms/",
+    "new": "https://www.maximoraverse.org/terms/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://auth.maximoraverse.org/contact",
+    "new": "https://www.maximoraverse.org/contact/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://auth.maximoraverse.org/contact/",
+    "new": "https://www.maximoraverse.org/contact/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://auth.maximoraverse.org/refund",
+    "new": "https://www.maximoraverse.org/refund/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://auth.maximoraverse.org/refund/",
+    "new": "https://www.maximoraverse.org/refund/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://auth.maximoraverse.org/pricing",
+    "new": "https://www.maximoraverse.org/pricing/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://auth.maximoraverse.org/pricing/",
+    "new": "https://www.maximoraverse.org/pricing/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://proxyservice.maximoraverse.org/privacy",
+    "new": "https://www.maximoraverse.org/privacy/policy/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://proxyservice.maximoraverse.org/privacy/",
+    "new": "https://www.maximoraverse.org/privacy/policy/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://proxyservice.maximoraverse.org/terms",
+    "new": "https://www.maximoraverse.org/terms/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://proxyservice.maximoraverse.org/terms/",
+    "new": "https://www.maximoraverse.org/terms/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://proxyservice.maximoraverse.org/contact",
+    "new": "https://www.maximoraverse.org/contact/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://proxyservice.maximoraverse.org/contact/",
+    "new": "https://www.maximoraverse.org/contact/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://proxyservice.maximoraverse.org/refund",
+    "new": "https://www.maximoraverse.org/refund/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://proxyservice.maximoraverse.org/refund/",
+    "new": "https://www.maximoraverse.org/refund/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://proxyservice.maximoraverse.org/pricing",
+    "new": "https://www.maximoraverse.org/pricing/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://proxyservice.maximoraverse.org/pricing/",
+    "new": "https://www.maximoraverse.org/pricing/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://drive.maximoraverse.org/privacy",
+    "new": "https://www.maximoraverse.org/legal/drive-privacy/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://drive.maximoraverse.org/privacy/",
+    "new": "https://www.maximoraverse.org/legal/drive-privacy/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://drive.maximoraverse.org/terms",
+    "new": "https://www.maximoraverse.org/legal/drive-terms/",
+    "redirect": 308,
+    "final": 200
+  },
+  {
+    "old": "https://drive.maximoraverse.org/terms/",
+    "new": "https://www.maximoraverse.org/legal/drive-terms/",
+    "redirect": 308,
+    "final": 200
+  }
+]

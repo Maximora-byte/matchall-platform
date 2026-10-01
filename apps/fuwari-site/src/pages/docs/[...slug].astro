@@ -1,0 +1,69 @@
+---
+import Markdown from "@components/misc/Markdown.astro";
+import MainGridLayout from "@layouts/MainGridLayout.astro";
+import { getCollection, type CollectionEntry } from "astro:content";
+import { Icon } from "astro-icon/components";
+
+const order = [
+	"getting-started",
+	"account-security",
+	"drive-guide",
+	"network-guide",
+	"mirrors-user",
+	"mirrors-developer",
+	"notification-delivery",
+	"troubleshooting",
+];
+
+export async function getStaticPaths() {
+	const entries = await getCollection("docs");
+	return entries.map((entry) => ({ params: { slug: entry.slug }, props: { entry, entries } }));
+}
+
+const { entry, entries } = Astro.props as { entry: CollectionEntry<"docs">; entries: CollectionEntry<"docs">[] };
+const docs = entries.sort((a, b) => order.indexOf(a.slug) - order.indexOf(b.slug));
+const index = docs.findIndex((item) => item.slug === entry.slug);
+const previous = docs[index - 1];
+const next = docs[index + 1];
+const { Content, headings } = await entry.render();
+const updated = new Intl.DateTimeFormat("zh-CN", { dateStyle: "long", timeZone: "UTC" }).format(entry.data.lastUpdated);
+const readingMinutes = Math.max(2, Math.ceil(entry.body.replace(/<[^>]+>/g, "").length / 450));
+const jsonLd = {
+	"@context": "https://schema.org",
+	"@type": "TechArticle",
+	headline: entry.data.title,
+	description: entry.data.description,
+	dateModified: entry.data.lastUpdated.toISOString(),
+	inLanguage: "zh-CN",
+};
+---
+
+<MainGridLayout title={entry.data.title} description={entry.data.description} headings={headings}>
+	<script is:inline slot="head" type="application/ld+json" set:html={JSON.stringify(jsonLd)}></script>
+	<article class="card-base rounded-[var(--radius-large)] px-6 py-7 md:px-9 md:py-9" data-pagefind-body>
+		<nav aria-label="面包屑" class="mb-5 flex items-center gap-2 text-sm text-black/45 dark:text-white/45">
+			<a class="hover:text-[var(--primary)]" href="/docs/">文档中心</a><span>/</span><span>{entry.data.title}</span>
+		</nav>
+		<h1 data-pagefind-meta="title" class="text-3xl md:text-[2.25rem]/[2.75rem] font-bold text-black/90 dark:text-white/90">{entry.data.title}</h1>
+		<p class="mt-3 text-black/55 dark:text-white/55">{entry.data.description}</p>
+		<div class="mt-4 mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-black/40 dark:text-white/40">
+			<span class="flex items-center gap-1.5"><Icon name="material-symbols:update-rounded" />最后更新：{updated}</span>
+			<span class="flex items-center gap-1.5"><Icon name="material-symbols:schedule-rounded" />预计阅读：{readingMinutes} 分钟</span>
+			<span class="flex items-center gap-1.5"><Icon name="material-symbols:menu-book-rounded" />系列第 {index + 1} / {docs.length} 篇</span>
+		</div>
+		<div class="mb-7 rounded-2xl border border-[var(--primary)]/20 bg-[var(--primary)]/[0.07] px-4 py-3 text-sm leading-6 text-black/65 dark:text-white/65"><strong class="text-[var(--primary)]">阅读建议：</strong>按顺序完成文中的步骤；遇到错误时先记录时间和提示，再按“常见问题”排查，避免直接清空账户或配置。</div>
+		<Markdown class="docs-markdown"><Content /></Markdown>
+	</article>
+
+	<nav aria-label="文档翻页" class="mt-4 grid gap-4 sm:grid-cols-2">
+		{previous ? <a class="btn-card rounded-2xl p-4" href={`/docs/${previous.slug}/`}><small class="block text-black/40 dark:text-white/40">上一篇</small><strong>{previous.data.title}</strong></a> : <span></span>}
+		{next && <a class="btn-card rounded-2xl p-4 text-right" href={`/docs/${next.slug}/`}><small class="block text-black/40 dark:text-white/40">下一篇</small><strong>{next.data.title}</strong></a>}
+	</nav>
+
+	<style is:global>
+		.docs-feedback { margin-top: 2rem; display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; padding: 1rem; border: 1px solid var(--line-divider); border-radius: 1rem; background: color-mix(in srgb, var(--primary) 6%, transparent); }
+		.docs-feedback strong { margin-right: auto; }
+		.docs-feedback button { border: 1px solid var(--line-divider); border-radius: .75rem; padding: .55rem .85rem; background: var(--card-bg); color: inherit; cursor: pointer; }
+		.docs-feedback button:hover { border-color: var(--primary); color: var(--primary); }
+	</style>
+</MainGridLayout>

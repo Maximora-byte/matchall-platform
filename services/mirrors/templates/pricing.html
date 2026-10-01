@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}价格与授权 · MatchAll Mirrors{% endblock %}
+{% block content %}
+<section class="wrap project-head"><div class="eyebrow">INDEPENDENT BILLING</div><h1>选择访问方案</h1><p class="lead">Mirrors 拥有独立订单与授权系统；购买记录不会与 Network 套餐混合。</p></section>
+<section class="wrap pricing-grid">
+{% for p in products %}
+<article class="panel price-card"><div class="eyebrow">{% if p.duration_days %}{{ p.duration_days }} DAYS{% else %}LIFETIME{% endif %}</div><h2>{{ p.name }}</h2><p>{{ p.description }}</p><div class="price">{{ p.price_display }}</div><ul><li>{% if p.all_projects %}解锁全部付费项目{% else %}解锁指定项目{% endif %}</li><li>网页下载与更新 API</li><li>可撤销设备 Token</li></ul>{% if p.projects %}<div class="meta">{% for project in p.projects %}<a class="chip" href="/project/{{ project.slug }}">{{ project.name }}</a>{% endfor %}</div>{% endif %}{% if user %}<form method="post" action="/checkout/{{ p.id }}"><input type="hidden" name="csrf_token" value="{{ user.csrf }}"><button class="primary wide">{% if stripe_enabled and p.stripe_price_id %}安全结账{% else %}提交订单{% endif %}</button></form>{% else %}<a class="btn primary wide" href="/login?next=/pricing">登录后购买</a>{% endif %}</article>
+{% else %}
+<div class="panel empty">收费系统已经就绪，管理员尚未发布商品价格。</div>
+{% endfor %}
+</section>
+<section class="wrap notice billing-note">未配置在线支付网关时，订单将进入待审核状态；管理员确认到账后自动发放授权。CDK 可在账户中心直接兑换。</section>
+{% endblock %}

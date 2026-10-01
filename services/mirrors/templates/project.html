@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} · MatchAll Mirrors{% endblock %}
+{% block content %}
+<section class="wrap project-head">
+  <div class="icon">{{ project.icon }}</div>
+  <h1>{{ project.name }}</h1>
+  <p class="lead">{{ project.summary }}</p>
+  <div class="meta">
+    {% if project.homepage %}<a class="chip" href="{{ project.homepage }}" rel="noopener">项目主页 ↗</a>{% endif %}
+    {% if project.license %}<span class="chip">{{ project.license }}</span>{% endif %}
+    <a class="chip" href="/api/v1/projects/{{ project.slug }}/latest">更新 API</a>
+    {% if project.access_mode == 'free' %}<span class="chip success">免费项目</span>
+    {% elif project.allowed %}<span class="chip success">账户已解锁</span>
+    {% else %}<span class="chip warning">需要购买</span>{% endif %}
+  </div>
+</section>
+<section class="wrap releases">
+  {% if not project.allowed %}
+  <div class="paywall panel">
+    <div><div class="eyebrow">LICENSE REQUIRED</div><h2>{{ project.product.name if project.product else '需要访问授权' }}</h2><p>{{ project.product.description if project.product else '请购买对应商品或在账户中心兑换 CDK。' }}</p></div>
+    <div class="paywall-action">{% if project.product %}<strong>{{ project.product.price_display }}</strong>{% endif %}<a class="btn primary" href="{% if user %}/pricing{% else %}/login?next=/project/{{ project.slug }}{% endif %}">{% if user %}购买访问权{% else %}登录后购买{% endif %}</a></div>
+  </div>
+  {% endif %}
+  {% if project.description %}<div class="notice">{{ project.description }}</div>{% endif %}
+  {% for r in project.releases %}
+  <article class="panel release">
+    <div class="release-top"><div><h2>v{{ r.version }}</h2><span class="chip">{{ r.channel }}</span></div><time class="muted" data-ts="{{ r.published_at }}">{{ r.published_at }}</time></div>
+    {% if r.notes %}<div class="release-notes">{{ r.notes|release_markdown }}</div>{% endif %}
+    <div class="table-wrap release-assets">
+      <table class="assets">
+        <thead><tr><th>平台</th><th>文件</th><th>大小</th><th>SHA-256</th><th></th></tr></thead>
+        <tbody>{% for a in r.artifacts %}<tr><td>{{ a.os }} / {{ a.arch }}</td><td>{{ a.filename }}</td><td>{% if a.size %}{{ (a.size/1048576)|round(2) }} MiB{% else %}外部文件{% endif %}</td><td class="hash">{{ a.sha256 or '由上游提供' }}</td><td>{% if project.allowed %}<div class="download-actions"><a class="btn primary" href="{{ a.download_url }}">下载</a><a class="btn" href="{{ a.international_download_url }}">使用国际源</a></div>{% else %}<a class="btn" href="/pricing">🔒 解锁</a>{% endif %}</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </article>
+  {% else %}<div class="panel empty">该项目尚未发布版本。</div>{% endfor %}
+</section>
+<script>document.querySelectorAll('time[data-ts]').forEach(e=>e.textContent=new Date(Number(e.dataset.ts)*1000).toLocaleString())</script>
+{% endblock %}

@@ -1,0 +1,233 @@
+services:
+  mirrors:
+    build: /root/.openclaw/workspace/main/mirror-platform
+    image: matchall-mirrors:local
+    restart: unless-stopped
+    environment:
+      BASE_URL: https://mirrors.maximoraverse.org
+      OIDC_ISSUER: https://auth.maximoraverse.org/application/o/matchall-mirrors
+      OIDC_ENDPOINT_BASE: https://auth.maximoraverse.org/application/o
+      OIDC_CLIENT_ID: matchall-mirrors
+      OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
+      SESSION_SECRET_FILE: /run/secrets/session_secret
+      ADMIN_USERS: admin
+      DATA_DIR: /data
+      MAX_UPLOAD_BYTES: "5368709120"
+    volumes:
+      - ./mirror-platform/data:/data
+      - ./mirror-platform/secrets/oidc-client.secret:/run/secrets/oidc_client_secret:ro
+      - ./mirror-platform/secrets/session.secret:/run/secrets/session_secret:ro
+    networks:
+      - blog_internal
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - mirrors
+      - nextcloud
+      - wordpress
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./fuwari-site/dist:/srv/fuwari:ro
+      - ./nav-site:/srv/nav:ro
+      - ./drive-site:/srv/drive:ro
+      - ./drive:/srv/brand:ro
+      - ./mirror-site:/srv/mirror:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      blog_internal:
+        aliases:
+          - auth.maximoraverse.org
+
+  investment:
+    build: /root/.openclaw/workspace/investment/docker
+    restart: unless-stopped
+    volumes:
+      - ./investment_data:/data
+      - ./investment_static:/static:ro
+      - ./.env:/run/secrets/okx_env:ro
+      - /root/.openclaw/workspace/secrets/okx.env:/run/secrets/okx_env:ro
+    networks:
+      - blog_internal
+
+  cloudreve:
+    image: cloudreve/cloudreve:4.16.0
+    profiles: ["legacy"]
+    restart: unless-stopped
+    depends_on:
+      cloudreve-postgres:
+        condition: service_healthy
+      cloudreve-redis:
+        condition: service_started
+    volumes:
+      - ./cloudreve/data:/cloudreve/data
+    networks:
+      - blog_internal
+
+  cloudreve-postgres:
+    image: postgres:17-alpine
+    profiles: ["legacy"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cloudreve
+      POSTGRES_PASSWORD: ${CLOUDREVE_POSTGRES_PASSWORD}
+      POSTGRES_DB: cloudreve
+    volumes:
+      - ./cloudreve/postgres:/var/lib/postgresql/data
+    networks:
+      - blog_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloudreve -d cloudreve"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  cloudreve-redis:
+    image: redis:7-alpine
+    profiles: ["legacy"]
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - ./cloudreve/redis:/data
+    networks:
+      - blog_internal
+
+  nextcloud:
+    image: nextcloud:33.0-apache
+    restart: unless-stopped
+    env_file:
+      - ./nextcloud/smtp.env
+    depends_on:
+      nextcloud-postgres:
+        condition: service_healthy
+      nextcloud-redis:
+        condition: service_started
+    environment:
+      POSTGRES_HOST: nextcloud-postgres
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD: ${NEXTCLOUD_POSTGRES_PASSWORD}
+      REDIS_HOST: nextcloud-redis
+      NEXTCLOUD_ADMIN_USER: nextcloud-admin
+      NEXTCLOUD_ADMIN_PASSWORD: ${NEXTCLOUD_ADMIN_PASSWORD}
+      NEXTCLOUD_TRUSTED_DOMAINS: drive.maximoraverse.org
+      OVERWRITEPROTOCOL: https
+      OVERWRITECLIURL: https://drive.maximoraverse.org
+      PHP_MEMORY_LIMIT: 1024M
+      PHP_UPLOAD_LIMIT: 10G
+      APACHE_BODY_LIMIT: 0
+      SMTP_PASSWORD_FILE: /run/secrets/nextcloud_smtp_password
+    ports:
+      - "127.0.0.1:18082:80"
+    volumes:
+      - ./nextcloud/html:/var/www/html
+      - ./nextcloud/smtp-password:/run/secrets/nextcloud_smtp_password:ro
+      - ./nextcloud/authentik-client-secret:/run/secrets/authentik_nextcloud_client_secret:ro
+    networks:
+      - blog_internal
+
+  nextcloud-cron:
+    image: nextcloud:33.0-apache
+    restart: unless-stopped
+    entrypoint: /cron.sh
+    depends_on:
+      - nextcloud
+    volumes:
+      - ./nextcloud/html:/var/www/html
+    networks:
+      - blog_internal
+
+  nextcloud-postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD: ${NEXTCLOUD_POSTGRES_PASSWORD}
+    volumes:
+      - ./nextcloud/postgres:/var/lib/postgresql/data
+    networks:
+      - blog_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nextcloud -d nextcloud"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  nextcloud-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - ./nextcloud/redis:/data
+    networks:
+      - blog_internal
+
+  wordpress:
+    image: wordpress:php8.3-apache
+    restart: unless-stopped
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:80"
+    environment:
+      WORDPRESS_DB_HOST: mariadb:3306
+      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME}
+      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+      WORDPRESS_CONFIG_EXTRA: |
+        define('DISALLOW_FILE_EDIT', true);
+        define('WP_AUTO_UPDATE_CORE', 'minor');
+        if (isset($$_SERVER['HTTP_X_FORWARDED_PROTO']) && $$_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+          $$_SERVER['HTTPS'] = 'on';
+        }
+    volumes:
+      - wordpress_html:/var/www/html
+      - ./wp-content/themes:/var/www/html/wp-content/themes
+      - ./wp-content/plugins:/var/www/html/wp-content/plugins
+      - ./wp-content/mu-plugins:/var/www/html/wp-content/mu-plugins
+      - ./wp-content/uploads:/var/www/html/wp-content/uploads
+      - ./config/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
+    networks:
+      - blog_internal
+
+  mariadb:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${WORDPRESS_DB_NAME}
+      MARIADB_USER: ${WORDPRESS_DB_USER}
+      MARIADB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    networks:
+      - blog_internal
+    healthcheck:
+      test: ["CMD-SHELL", "healthcheck.sh --connect --innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+networks:
+  blog_internal:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
+  wordpress_html:
+  mariadb_data:

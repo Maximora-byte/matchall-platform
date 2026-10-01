@@ -1,0 +1,5 @@
+.brand{display:flex;align-items:center;gap:12px;flex-shrink:0;font-size:16px;font-weight:800;letter-spacing:-.025em}
+.brand img{display:block;width:42px;height:42px;flex:0 0 auto;object-fit:contain}
+.brand .brand-copy{display:block;font-size:16px;font-weight:800;line-height:1.12;letter-spacing:-.025em}
+.brand-copy small{display:block;margin-top:4px;color:var(--muted);font-size:9px;font-weight:750;line-height:1.12;letter-spacing:.16em;text-transform:uppercase}
+@media(max-width:380px){.brand{gap:9px}.brand-copy small{letter-spacing:.1em}header nav .small{padding:8px;font-size:12px}}

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="MatchAll Mirrors 软件版本发布、更新检查、SHA-256 校验与高速下载平台">
+<meta name="theme-color" content="#f6f7fa" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#090a0c" media="(prefers-color-scheme: dark)">
+<link rel="canonical" href="https://mirrors.maximoraverse.org{{ request.url.path }}">
+<link rel="alternate" hreflang="zh-CN" href="https://mirrors.maximoraverse.org{{ request.url.path }}">
+<link rel="alternate" hreflang="en" href="https://mirrors.maximoraverse.org{{ request.url.path }}?lang=en">
+<link rel="alternate" hreflang="ja" href="https://mirrors.maximoraverse.org{{ request.url.path }}?lang=ja">
+<link rel="alternate" hreflang="x-default" href="https://mirrors.maximoraverse.org{{ request.url.path }}">
+<meta property="og:type" content="website"><meta property="og:site_name" content="MatchAll">
+<meta property="og:title" content="{% block og_title %}MatchAll Mirrors｜软件版本与更新分发{% endblock %}">
+<meta property="og:description" content="软件版本发布、更新检查、SHA-256 校验与高速下载。">
+<meta property="og:url" content="https://mirrors.maximoraverse.org{{ request.url.path }}">
+<meta property="og:image" content="https://www.maximoraverse.org/assets/brand/matchall-social-1200x630.png">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="MatchAll Mirrors｜软件版本与更新分发"><meta name="twitter:description" content="软件版本发布、更新检查、SHA-256 校验与高速下载。"><meta name="twitter:image" content="https://www.maximoraverse.org/assets/brand/matchall-social-1200x630.png">
+<title>{% block title %}MatchAll Mirrors{% endblock %}</title>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"MatchAll Mirrors","url":"https://mirrors.maximoraverse.org/","applicationCategory":"DeveloperApplication","operatingSystem":"Web"}</script>
+<script defer src="https://www.maximoraverse.org/assets/matchall-ui.js?v=20261001overlay1"></script>
+<link rel="icon" href="/assets/brand/favicon.svg?v=20260926" type="image/svg+xml"><link rel="alternate icon" href="/assets/brand/favicon.ico?v=20260926"><link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png?v=20260926"><link rel="stylesheet" href="/assets/brand/brand.css?v=20260926"><link rel="stylesheet" href="/static/app.css?v=20261001turnstile1"></head>
+<body>
+<header class="wrap top"><a class="brand" href="/"><img class="matchall-brand-symbol" src="/assets/brand/matchall-symbol.svg" alt="" width="42" height="42"><span class="brand-copy">MatchAll Mirrors<small>Software distribution</small></span></a><nav class="nav"><a class="btn optional" href="/pricing">价格</a><a class="btn optional" href="https://docs.maximoraverse.org/docs/mirrors-developer">开发文档</a>{% if user %}<a class="btn" href="/developer">开发者中心</a>{% endif %}<a class="btn optional" href="https://www.maximoraverse.org/">全部服务</a>{% if is_admin %}<a class="btn" href="/account">我的授权</a><a class="btn primary" href="/admin">收费与发布管理</a>{% elif user %}<a class="btn primary" href="/account">{{ user.preferred_username }} 的账户</a><a class="btn" href="/logout">退出</a>{% else %}<a class="btn primary" href="/login"><span class="login-prefix">MatchAll </span>登录</a>{% endif %}</nav></header>
+<main>{% block content %}{% endblock %}</main>
+<footer class="wrap footer"><span>© 2026 MatchAll Mirrors · 独立订单、授权与软件分发基础设施</span><span><a href="/pricing">价格</a> · <a href="https://www.maximoraverse.org/refund/">退款</a> · <a href="https://www.maximoraverse.org/privacy/policy/">隐私</a> · <a href="https://www.maximoraverse.org/terms/">条款</a></span></footer>
+</body></html>

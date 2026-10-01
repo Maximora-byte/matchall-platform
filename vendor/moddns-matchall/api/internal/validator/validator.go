@@ -1,0 +1,312 @@
+package validator
+
+import (
+	"errors"
+	"fmt"
+	"reflect"
+	"regexp"
+	"strconv"
+	"strings"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/go-playground/validator/v10"
+	"github.com/gofiber/fiber/v2"
+	"github.com/ivpn/dns/libs/deviceid"
+	"github.com/rs/zerolog/log"
+	"golang.org/x/text/unicode/norm"
+)
+
+// Pre-compiled regexes for password validation (avoid re-compilation on every call).
+// Per OWASP ASVS guidance, the special-character requirement does not restrict
+// which symbols are allowed: any non-alphanumeric character counts as special.
+//
+// reSpecialChar uses the Unicode-aware classes \p{L} (letters) and \p{N} (numbers)
+// rather than [^A-Za-z0-9]. This ensures non-ASCII letters/digits (e.g. "é", "١")
+// count as alphanumeric — not as a special character — so a password cannot
+// satisfy the special-character requirement using only letters and digits.
+var (
+	reUppercase   = regexp.MustCompile(`[A-Z]`)
+	reLowercase   = regexp.MustCompile(`[a-z]`)
+	reNumber      = regexp.MustCompile(`[0-9]`)
+	reSpecialChar = regexp.MustCompile(`[^\p{L}\p{N}]`)
+)
+
+const (
+	// TODO: implement IPv4 and IPv6 wildcard patterns
+	// IPv4WildcardRegex = `^(\*|[0-9]+)\.(\*|[0-9]+)\.(\*|[0-9]+)\.(\*|[0-9]+)$`
+	// IPv6WildcardRegex = `^(\*|[0-9a-fA-F:]+)(:\*|:[0-9a-fA-F]+)*$`
+	FQDNWildcardRegex     = `^[a-zA-Z0-9-]*\*[a-zA-Z0-9-]*(\.[a-zA-Z0-9][-a-zA-Z0-9]*)*$`
+	SuffixWildcardRegex   = `^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?)*\.\*$`
+	ContainsWildcardRegex = `^\*[a-zA-Z0-9][-a-zA-Z0-9.]*[a-zA-Z0-9]\*$`
+)
+
+var wildcardPatterns = map[string]string{
+	// "ipv4": IPv4WildcardRegex,
+	// "ipv6": IPv6WildcardRegex,
+	"fqdn":     FQDNWildcardRegex,
+	"suffix":   SuffixWildcardRegex,
+	"contains": ContainsWildcardRegex,
+}
+
+type ErrorResponse struct {
+	Error       bool
+	FailedField string
+	Tag         string
+	Param       string
+	Value       any
+}
+
+type APIValidator struct {
+	Validator       *validator.Validate
+	WildcardRegexes map[string]*regexp.Regexp
+}
+
+func NewAPIValidator() (*APIValidator, error) {
+	validate := validator.New(validator.WithRequiredStructEnabled())
+	// Report fields by their JSON name so validation errors reference the field
+	// as it appears in the request/file the user sent (e.g. "customRules",
+	// "defaultRule") rather than the Go struct field name.
+	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
+		name := strings.SplitN(fld.Tag.Get("json"), ",", 2)[0]
+		if name == "-" || name == "" {
+			return fld.Name
+		}
+		return name
+	})
+	apiValidator := &APIValidator{
+		Validator:       validate,
+		WildcardRegexes: make(map[string]*regexp.Regexp),
+	}
+	err := apiValidator.Validator.RegisterValidation("password", passwordValidation)
+	if err != nil {
+		return nil, err
+	}
+	err = apiValidator.Validator.RegisterValidation("fqdn_wildcard", apiValidator.wildcardValidation)
+	if err != nil {
+		return nil, err
+	}
+	err = apiValidator.Validator.RegisterValidation("asn", asnValidation)
+	if err != nil {
+		return nil, err
+	}
+	err = apiValidator.Validator.RegisterValidation("device_id", deviceIDValidation)
+	if err != nil {
+		return nil, err
+	}
+	err = apiValidator.Validator.RegisterValidation("safe_name", safeNameValidation)
+	if err != nil {
+		return nil, err
+	}
+	for key, pattern := range wildcardPatterns {
+		compiled, err := regexp.Compile(pattern)
+		if err != nil {
+			log.Error().Err(err).Msg("Error compiling pattern")
+			return nil, err
+		}
+		apiValidator.WildcardRegexes[key] = compiled
+	}
+	return apiValidator, nil
+}
+
+func (v APIValidator) Validate(data any) []ErrorResponse {
+	validationErrors := []ErrorResponse{}
+
+	errs := v.Validator.Struct(data)
+	if errs != nil {
+		for _, err := range errs.(validator.ValidationErrors) {
+			var elem ErrorResponse
+
+			elem.FailedField = err.Field() // JSON field name (see RegisterTagNameFunc)
+			elem.Tag = err.Tag()           // validation tag, e.g. "max", "oneof"
+			elem.Param = err.Param()       // tag parameter, e.g. "1000" for max=1000
+			elem.Value = err.Value()       // field value
+			elem.Error = true
+
+			validationErrors = append(validationErrors, elem)
+		}
+	}
+
+	return validationErrors
+}
+
+// ValidateRequest validates the request payload according to the provided struct
+// tags and returns user-facing error sentences (one per failed field).
+func (v APIValidator) ValidateRequest(c *fiber.Ctx, payload any, errMsg string) []string {
+	errMsgs := make([]string, 0)
+	if errs := v.Validate(payload); len(errs) > 0 && errs[0].Error {
+
+		for _, err := range errs {
+			validationErr := humanValidationError(err.FailedField, err.Tag, err.Param)
+			log.Error().Str("path", c.Route().Path).Str("field", err.FailedField).Str("tag", err.Tag).Err(errors.New("validation error")).Msg(validationErr)
+			errMsgs = append(errMsgs, validationErr)
+		}
+
+		return errMsgs
+	}
+	return errMsgs
+}
+
+// humanValidationError turns a single field validation failure into a user-facing
+// sentence. field is the wire (JSON) field name; tag/param come from the
+// go-playground validation tag (e.g. tag="max", param="1000").
+func humanValidationError(field, tag, param string) string {
+	switch tag {
+	case "required":
+		return fmt.Sprintf("%s is required", field)
+	case "max":
+		return fmt.Sprintf("%s must be at most %s", field, param)
+	case "min":
+		return fmt.Sprintf("%s must be at least %s", field, param)
+	case "eq":
+		return fmt.Sprintf("%s must equal %s", field, param)
+	case "oneof":
+		return fmt.Sprintf("%s must be one of: %s", field, strings.ReplaceAll(param, " ", ", "))
+	case "safe_name":
+		return fmt.Sprintf("%s contains invalid characters", field)
+	default:
+		// fqdn|ipv4|ipv6|asn (and their OR-combinations) guard custom-rule values.
+		if strings.Contains(tag, "fqdn") || strings.Contains(tag, "ipv4") ||
+			strings.Contains(tag, "ipv6") || strings.Contains(tag, "asn") {
+			return fmt.Sprintf("%s must be a valid domain, IP address, wildcard, or ASN", field)
+		}
+		return fmt.Sprintf("%s is invalid", field)
+	}
+}
+
+// Custom validation function for wildcard patterns in FQDN and IP addresses
+func (v APIValidator) wildcardValidation(fl validator.FieldLevel) bool {
+	value := fl.Field().String()
+
+	// Support leading dot syntax by treating ".example.com" as "*.example.com" for validation
+	if !strings.Contains(value, "*") && strings.HasPrefix(value, ".") {
+		value = "*" + value
+	}
+
+	// If still no wildcard, skip validation (handled by other validators)
+	if !strings.Contains(value, "*") {
+		return false
+	}
+
+	// Reject patterns with no domain content (e.g. "*", "*.", "**"). The FQDN
+	// regex permits empty pre/post sides, which would let "*" through and
+	// match every domain in the proxy filter.
+	if strings.Trim(value, "*.") == "" {
+		return false
+	}
+
+	// Check if the value matches any of the wildcard patterns
+	for _, re := range v.WildcardRegexes {
+		matched := re.MatchString(value)
+		if matched {
+			return true
+		}
+	}
+
+	return false
+}
+
+func asnValidation(fl validator.FieldLevel) bool {
+	value := strings.TrimSpace(fl.Field().String())
+	if value == "" {
+		return false
+	}
+
+	upper := strings.ToUpper(value)
+	if strings.HasPrefix(upper, "AS") {
+		if len(value) < 2 {
+			return false
+		}
+		value = strings.TrimSpace(value[2:])
+	}
+
+	if value == "" {
+		return false
+	}
+
+	parsed, err := strconv.ParseUint(value, 10, 32)
+	if err != nil {
+		return false
+	}
+	return parsed > 0
+}
+
+// passwordValidation validates the password according to the complexity criteria
+func passwordValidation(fl validator.FieldLevel) bool {
+	return ValidatePassword(fl.Field().String())
+}
+
+func ValidatePassword(password string) bool {
+	// Length is measured in characters (runes), not bytes, so the 12-64 limit
+	// is consistent regardless of whether a password uses multi-byte characters.
+	if n := utf8.RuneCountInString(password); n < 12 || n > 64 {
+		return false
+	}
+
+	if !reUppercase.MatchString(password) {
+		return false
+	}
+
+	if !reLowercase.MatchString(password) {
+		return false
+	}
+
+	if !reNumber.MatchString(password) {
+		return false
+	}
+
+	if !reSpecialChar.MatchString(password) {
+		return false
+	}
+
+	return true
+}
+
+// deviceIDValidation validates device identifiers using the shared deviceid package.
+// It passes if the raw value equals its normalized form (only [A-Za-z0-9 -], max length).
+func deviceIDValidation(fl validator.FieldLevel) bool {
+	value := fl.Field().String()
+	return value == deviceid.Normalize(value)
+}
+
+// safeNameValidation accepts a user-facing display name that:
+//   - is non-empty after trimming Unicode whitespace
+//   - contains no Unicode control (Cc), format (Cf — bidi overrides, zero-width
+//     joiners, etc.), surrogate (Cs), or private-use (Co) runes
+//
+// Length is checked separately via min/max tags. Allows Unicode letters, marks,
+// digits, punctuation, symbols, and ordinary spaces so international names work.
+func safeNameValidation(fl validator.FieldLevel) bool {
+	return IsSafeName(fl.Field().String())
+}
+
+// IsSafeName reports whether s is a safe display name. See safeNameValidation.
+func IsSafeName(s string) bool {
+	if strings.TrimSpace(s) == "" {
+		return false
+	}
+	for _, r := range s {
+		if unicode.In(r, unicode.Cc, unicode.Cf, unicode.Cs, unicode.Co) {
+			return false
+		}
+	}
+	return true
+}
+
+// NormalizeName trims surrounding Unicode whitespace and returns the NFC form.
+// Apply at the storage boundary so duplicate-name checks see canonical strings
+// (e.g. "Café" vs "Café" collapse to the same form).
+func NormalizeName(s string) string {
+	return norm.NFC.String(strings.TrimSpace(s))
+}
+
+// NormalizeEmail returns the canonical storage form of an email address:
+// surrounding whitespace trimmed, whole address lowercased. RFC 5321 §2.4
+// allows case-sensitive local parts, but no mainstream provider honors that;
+// addresses are treated case-insensitively throughout. Apply at the storage
+// boundary and on every email lookup key. Deliberately no NFC: migration 025
+// backfills stored emails with Mongo $toLower, and both must produce
+// identical bytes.
+func NormalizeEmail(s string) string {
+	return strings.ToLower(strings.TrimSpace(s))
+}

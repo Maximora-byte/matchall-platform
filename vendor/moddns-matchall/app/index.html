@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en" style="background-color: #111111;">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/src/assets/logos/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/src/assets/logos/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/src/assets/logos/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#EBEEEE" media="(prefers-color-scheme: light)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="modDNS" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="description" content="DNS filtering with configurable blocklists, custom rules, and encrypted query protocols. Open source, independently audited. Included in IVPN Plus and Pro Suite." />
+    <meta property="og:title" content="modDNS — Open-source DNS filtering by IVPN" />
+    <meta property="og:description" content="Configurable blocklists, custom rules, encrypted DNS protocols. Independently audited. No query logging by default." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://moddns.net" />
+    <meta property="og:image" content="https://moddns.net/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="modDNS — Open-source DNS filtering by IVPN" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!-- Early theme bootstrap to prevent initial white flash. This sets data-shadcn-ui-mode + body bg before first paint.
+         CSP: This inline script is whitelisted by sha256 hash in nginx.conf.
+         If you modify it, update the hash there or the browser will block it. -->
+    <script>
+      (function() {
+        try {
+          var stored = localStorage.getItem('vite-ui-theme');
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var theme = stored ? stored : (prefersDark ? 'dark' : 'light');
+          var isDark = theme === 'dark';
+          // Dark: #111111 for all. Light: #FFFFFF for app/sidebar, #EBEEEE for public pages
+          var appBg = isDark ? '#111111' : '#FFFFFF';
+          var publicBg = isDark ? '#111111' : '#EBEEEE';
+          document.documentElement.setAttribute('data-shadcn-ui-mode', isDark ? 'dark-emerald' : 'light');
+          document.documentElement.classList.add(isDark ? 'dark' : 'light');
+          document.documentElement.style.backgroundColor = appBg;
+          document.documentElement.style.setProperty('--shadcn-ui-app-background', appBg);
+          document.documentElement.style.setProperty('--public-page-background', publicBg);
+        } catch (e) {
+          document.documentElement.setAttribute('data-shadcn-ui-mode', 'dark-emerald');
+          document.documentElement.classList.add('dark');
+          document.documentElement.style.backgroundColor = '#111111';
+          document.documentElement.style.setProperty('--shadcn-ui-app-background', '#111111');
+        }
+      })();
+    </script>
+    <style>
+      /* Theme background variables defined early so components using var(--shadcn-ui-app-background) don't flash white */
+      :root[data-shadcn-ui-mode="dark-emerald"], :root.dark { --shadcn-ui-app-background: #111111; }
+      :root[data-shadcn-ui-mode="light"], :root.light { --shadcn-ui-app-background: #FFFFFF; --public-page-background: #EBEEEE; }
+      html, body, #root { background: var(--shadcn-ui-app-background, #111111); min-height: 100vh; }
+      .public-page-bg { background-color: var(--public-page-background, var(--shadcn-ui-app-background)); }
+      /* Prevent toast / notification containers from exceeding viewport width */
+      .toaster, .toaster * { max-width: 100%; box-sizing: border-box; }
+      /* Respect reduced motion for any future fade transitions */
+      @media (prefers-reduced-motion: reduce) { .fade-enter-active, .fade-exit-active { transition: none !important; } }
+    </style>
+    <title>modDNS — Open-source DNS filtering by IVPN</title>
+  </head>
+  <body style="overflow-x:hidden; background-color: #111111;">
+    <div id="root" style="background-color: #111111; min-height: 100vh;"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

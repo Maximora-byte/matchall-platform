@@ -1,0 +1,82 @@
+[
+  {
+    "url": "https://auth.maximoraverse.org/",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "url": "https://docs.maximoraverse.org/",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "url": "https://drive.maximoraverse.org/",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "url": "https://proxyservice.maximoraverse.org/",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "url": "https://proxyservice.maximoraverse.org/login",
+    "status": 302,
+    "ok": true
+  },
+  {
+    "url": "https://status.maximoraverse.org/",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "url": "https://t.me/MatchallProxyServiceBot",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "url": "https://www.maximoraverse.org/",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "url": "https://www.maximoraverse.org/contact/",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "url": "https://www.maximoraverse.org/legal/drive-privacy/",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "url": "https://www.maximoraverse.org/legal/drive-terms/",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "url": "https://www.maximoraverse.org/pricing/",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "url": "https://www.maximoraverse.org/privacy/",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "url": "https://www.maximoraverse.org/privacy/policy/",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "url": "https://www.maximoraverse.org/refund/",
+    "status": 200,
+    "ok": true
+  },
+  {
+    "url": "https://www.maximoraverse.org/terms/",
+    "status": 200,
+    "ok": true
+  }
+]

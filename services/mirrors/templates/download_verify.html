@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}下载验证 · MatchAll Mirrors{% endblock %}
+{% block content %}
+<section class="wrap verify-download">
+  <div class="panel verify-card">
+    <div class="eyebrow">DOWNLOAD VERIFICATION</div>
+    <h1>完成验证后下载</h1>
+    <p class="lead">此验证仅用于防止自动化滥用。每次手动免费下载都需要重新验证。</p>
+    {% if verify_error %}<p class="notice warning" role="alert">{{ verify_error }}</p>{% endif %}
+    <form method="post" action="/download/{{ artifact_id }}/verify">
+      {% if source == 'international' %}<input type="hidden" name="source" value="international">{% endif %}
+      <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="auto"></div>
+      <button class="btn primary" type="submit">验证并{% if source == 'international' %}使用国际源{% else %}下载{% endif %}</button>
+    </form>
+    <p class="muted">验证通过后会签发仅限当前文件、短时有效且只能使用一次的下载凭证。</p>
+  </div>
+</section>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+{% endblock %}

@@ -1,0 +1,24 @@
+name: matchall-dns-transports
+services:
+  gateway:
+    image: matchall-dns-transports:initial
+    network_mode: host
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    cpus: 1
+    pids_limit: 64
+    environment:
+      LISTEN_ADDR: 0.0.0.0:853
+      DNS_SUFFIX: tls.dns.maximoraverse.org
+      GATEWAY_URL: http://127.0.0.1:18084
+      TLS_CERT: /certs/live/matchall-dns-transports/fullchain.pem
+      TLS_KEY: /certs/live/matchall-dns-transports/privkey.pem
+    volumes:
+      - /mnt/data/matchall-dns-transports/letsencrypt:/certs:ro
+    logging:
+      driver: json-file
+      options: {max-size: '2m', max-file: '2'}

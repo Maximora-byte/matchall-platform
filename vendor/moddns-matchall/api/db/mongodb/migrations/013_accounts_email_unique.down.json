@@ -1,0 +1,16 @@
+[
+  {
+    "dropIndexes": "accounts",
+    "index": "email"
+  },
+  {
+    "createIndexes": "accounts",
+    "indexes": [
+      {
+        "key": { "email": 1 },
+        "name": "email",
+        "background": true
+      }
+    ]
+  }
+]

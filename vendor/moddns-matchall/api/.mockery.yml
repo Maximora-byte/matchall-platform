@@ -1,0 +1,48 @@
+force-file-write: true
+formatter: goimports
+generate: true
+include-auto-generated: false
+log-level: info
+require-template-schema-exists: true
+template: testify
+template-schema: '{{.Template}}.schema.json'
+packages:
+  github.com/ivpn/dns/api/service:
+    # recursive: false — sub-packages of api/service (account, profile, etc.)
+    # are covered by the broad github.com/ivpn/dns/api rule below, which adds
+    # the SrcPackageName suffix to avoid filename collisions. Pre-unification
+    # this rule was `recursive: true` and worked by ordering luck; adding
+    # interfaces in api/internal/reauth exposed the latent collision (mockery
+    # would write both `service.servicesCatalogReader` and
+    # `service/profile.ServicesCatalogReader` to services_catalog_reader.go).
+    config:
+      all: true
+      recursive: false
+      pkgname: 'mocks'
+      dir: './mocks'
+      filename: "{{.InterfaceName | snakecase}}.go"
+      structname: '{{.InterfaceName}}'
+  github.com/ivpn/dns/api/db:
+    config:
+      all: true
+      recursive: true
+      pkgname: 'mocks'
+      dir: './mocks'
+      filename: "{{.InterfaceName | snakecase}}.go"
+      structname: '{{.InterfaceName}}'
+  github.com/ivpn/dns/api/db/repository:
+    config:
+      all: true
+      recursive: true
+      pkgname: 'mocks'
+      dir: './mocks'
+      filename: "{{.InterfaceName | snakecase}}.go"
+      structname: '{{.InterfaceName}}'
+  github.com/ivpn/dns/api:
+    config:
+      all: true
+      recursive: true
+      pkgname: 'mocks'
+      dir: './mocks'
+      filename: "{{.InterfaceName | snakecase}}_{{.SrcPackageName | snakecase}}.go"
+      structname: '{{.InterfaceName}}{{.SrcPackageName}}'

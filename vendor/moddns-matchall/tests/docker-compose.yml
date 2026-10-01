@@ -1,0 +1,338 @@
+services:
+  dnsapi:
+    build:
+      context: ../
+      dockerfile: api/Dockerfile
+    networks:
+      - dnsnetwork
+    container_name: dnsapi
+    depends_on:
+      - cache
+      - mongodb
+      - mock-preauth
+    ports:
+      - 3000:3000
+    volumes:
+      - ./bootstrap/services:/opt/services:ro
+      - ./bootstrap/geolite/:/opt/geo:ro
+    env_file:
+      - ./config/api.env
+    healthcheck:
+      test: ["CMD", "/bin/healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+
+  dnsproxy:
+    build:
+      context: ../
+      dockerfile: proxy/Dockerfile
+    networks:
+      dnsnetwork:
+        # Fixed so knot's local-data redirect (config/knot.config.yaml) can hand
+        # this address out for moddns.dev and *.moddns.dev — the in-stack stand-in
+        # for the public zone that resolves dns.moddns.net for real clients.
+        ipv4_address: 10.5.0.100
+    container_name: dnsproxy
+    depends_on:
+      - cache
+      - redis-replica-dns
+      - mongodb
+      - sdns
+      - knot
+    ports:
+      # Plain DNS is deliberately not published — the product only exposes
+      # encrypted transports (DoH/DoT/DoQ).
+      - "443:443" # HTTPS
+      - "853:853/tcp" # TLS
+      - "853:853/udp" # QUIC
+    volumes:
+      - ../dev/certs:/certs
+      - ./bootstrap/services:/opt/services:ro
+      - ./bootstrap/geolite/:/opt/geo:ro
+    env_file:
+      - ./config/proxy.env
+
+  dnscheck:
+    build:
+      context: ../
+      dockerfile: dnscheck/Dockerfile
+    networks:
+      dnsnetwork:
+        # The proxy forwards check queries to DNS_CHECK_DOMAIN:53 (config/proxy.env);
+        # the alias keeps that resolution inside the stack instead of the public
+        # zone, which points at production.
+        aliases:
+          - test.moddns.net
+    container_name: dnscheck
+    depends_on:
+      - cache
+      - sdns
+    ports:
+      - "30080:3000"
+      - "30000:53/udp"
+      - "30000:53/tcp"
+    volumes:
+      - ../dnscheck:/app
+      - ./bootstrap/geolite/:/opt/dnscheck/GeoIP
+      - ./bootstrap/geolite/:/opt/dnscheck/GeoIPCity
+    env_file:
+      - ./config/dnscheck.env
+
+  dnsblocklists:
+    build:
+      context: ../
+      dockerfile: blocklists/Dockerfile
+    networks:
+      - dnsnetwork
+    container_name: dnsblocklists
+    depends_on:
+      - cache
+      - mongodb
+      - sdns
+    volumes:
+      - ./blocklists_sources/:/sources
+    env_file:
+      - ./config/blocklists.env
+
+  sdns:
+    image: c1982/sdns:1.6.0
+    command: ["-c", "/sdns.conf"]
+    # restart: always # most probably unbound CI failures are caused by this line
+    networks:
+      dnsnetwork:
+        ipv4_address: 10.5.0.5
+    container_name: sdns
+    volumes:
+      - ./config/sdns.conf:/sdns.conf
+      - ./config/testhosts.txt:/testhosts.txt:ro
+
+  knot:
+    image: cznic/knot-resolver:v6.4.0
+    networks:
+      dnsnetwork:
+        ipv4_address: 10.5.0.6
+    container_name: knot
+    volumes:
+      - ./config/knot.config.yaml:/etc/knot-resolver/config.yaml:ro
+
+  mongodb:
+    image: mongo:8.2.3
+    networks:
+      - dnsnetwork
+    container_name: mongodb
+    ports:
+      - 27017:27017
+    environment:
+      - MONGO_INITDB_DATABASE=dns
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=admin
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  cache:
+    container_name: cache
+    image: ${REDIS_IMAGE}
+    restart: always
+    command: ["redis-server", "/etc/redis/master.conf"]
+    networks:
+      dnsnetwork:
+        ipv4_address: 10.5.0.10
+    ports:
+      - '6379:6379'
+      - '8001:8001'
+    volumes:
+      - ./bootstrap/redis/master.conf:/etc/redis/master.conf:ro
+    healthcheck:
+      test: ["CMD", "redis-cli","--user","appcache","-a","${REDIS_PASSWORD}","ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  redis-replica:
+    container_name: redis-replica
+    image: ${REDIS_IMAGE}
+    command: ["redis-server", "/etc/redis/replica.conf"]
+    restart: always
+    depends_on:
+      - cache
+    networks:
+      dnsnetwork:
+        ipv4_address: 10.5.0.11
+    volumes:
+      - ./bootstrap/redis/replica.conf:/etc/redis/replica.conf:ro
+    healthcheck:
+      test: ["CMD", "redis-cli","--user","appcache","-p","6379","-a","${REDIS_PASSWORD}","ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  redis-replica-dns:
+    container_name: redis-replica-dns
+    image: ${REDIS_IMAGE}
+    command: ["redis-server", "/etc/redis/replica-dns.conf"]
+    restart: always
+    depends_on:
+      - cache
+    networks:
+      dnsnetwork:
+        ipv4_address: 10.5.0.20
+    volumes:
+      - ./bootstrap/redis/replica-dns.conf:/etc/redis/replica-dns.conf:ro
+    healthcheck:
+      test: ["CMD", "redis-cli","--user","appcache","-p","6379","-a","${REDIS_PASSWORD}","ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  sentinel1:
+    container_name: sentinel1
+    image: ${REDIS_IMAGE}
+    restart: always
+    depends_on:
+      - cache
+      - redis-replica
+    networks:
+      - dnsnetwork
+    ports:
+      - '26379:26379'
+    volumes:
+      - ./bootstrap/redis/sentinel.conf:/tmp/sentinel.conf:ro
+    command: ["/bin/sh","-c","cp /tmp/sentinel.conf /data/sentinel.conf && exec redis-server /data/sentinel.conf --sentinel"]
+    healthcheck:
+      test: ["CMD", "redis-cli","-p","26379","ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  sentinel2:
+    container_name: sentinel2
+    image: ${REDIS_IMAGE}
+    restart: always
+    depends_on:
+      - cache
+      - redis-replica
+    networks:
+      - dnsnetwork
+    ports:
+      - '26380:26379'
+    volumes:
+      - ./bootstrap/redis/sentinel.conf:/tmp/sentinel.conf:ro
+    command: ["/bin/sh","-c","cp /tmp/sentinel.conf /data/sentinel.conf && exec redis-server /data/sentinel.conf --sentinel"]
+    healthcheck:
+      test: ["CMD", "redis-cli","-p","26379","ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  sentinel3:
+    container_name: sentinel3
+    image: ${REDIS_IMAGE}
+    restart: always
+    depends_on:
+      - cache
+      - redis-replica
+    networks:
+      - dnsnetwork
+    ports:
+      - '26381:26379'
+    volumes:
+      - ./bootstrap/redis/sentinel.conf:/tmp/sentinel.conf:ro
+    command: ["/bin/sh","-c","cp /tmp/sentinel.conf /data/sentinel.conf && exec redis-server /data/sentinel.conf --sentinel"]
+    healthcheck:
+      test: ["CMD", "redis-cli","-p","26379","ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  
+  mock-preauth:
+    container_name: mock-preauth
+    image: python:3.12-slim
+    networks:
+      - dnsnetwork
+    ports:
+      - '8080:8080'
+    volumes:
+      - ./bootstrap/mock-preauth:/app:ro
+    command: ["python", "/app/server.py"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  email:
+    container_name: email
+    image: axllent/mailpit:v1.24.2
+    restart: always
+    networks:
+      - dnsnetwork
+    ports:
+      - '8025:8025'
+      - '1025:1025'
+
+  # Real third-party resolvers in front of modDNS (dns_tests/test_adguard_home.py,
+  # dns_tests/test_pihole.py). Host ports 5390+ stay clear of systemd-resolved.
+  adguardhome:
+    image: adguard/adguardhome:v0.107.79
+    container_name: adguardhome
+    networks:
+      - dnsnetwork
+    depends_on:
+      - dnsproxy
+      - knot
+    ports:
+      - "5390:53/udp"
+      - "5390:53/tcp"
+      - "5391:3000" # /control API
+    volumes:
+      - ./config/adguardhome.yaml:/seed/AdGuardHome.yaml:ro
+      - ../dev/certs/moddns_dev_development_CA.crt:/certs/dev-ca.crt:ro
+    environment:
+      # Go's TLS trust for the DoH/DoT/DoQ connections to the dev-cert proxy.
+      SSL_CERT_FILE: /certs/dev-ca.crt
+    # AdGuard Home rewrites its config file at runtime, so it gets a copy of the
+    # read-only seed rather than the seed itself.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - cp /seed/AdGuardHome.yaml /opt/adguardhome/conf/AdGuardHome.yaml
+        && exec /opt/adguardhome/AdGuardHome --no-check-update
+        -c /opt/adguardhome/conf/AdGuardHome.yaml -w /opt/adguardhome/work
+
+  pihole:
+    image: pihole/pihole:2026.09.0
+    container_name: pihole
+    networks:
+      - dnsnetwork
+    depends_on:
+      - dnsproxy
+    ports:
+      - "5392:53/udp"
+      - "5392:53/tcp"
+    volumes:
+      - ../dev/certs/moddns_dev_development_CA.crt:/certs/dev-ca.crt:ro
+    environment:
+      # Pi-hole has no encrypted-upstream support of its own; it forwards to a
+      # dnscrypt-proxy that the test starts inside this container on 5353 with
+      # the profile's DoH stamp (libs/pihole.py) — the documented Pi-hole setup.
+      FTLCONF_dns_upstreams: 127.0.0.1#5353
+      FTLCONF_dns_listeningMode: all
+      # Each test swaps the stamp behind the same upstream; a cached answer
+      # would leak one profile's verdict into the next test.
+      FTLCONF_dns_cache_size: 0
+      FTLCONF_webserver_api_password: ""
+      FTLCONF_misc_check_load: false
+      TZ: UTC
+
+networks:
+  dnsnetwork:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.5.0.0/16
+          gateway: 10.5.0.1

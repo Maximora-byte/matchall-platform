@@ -1,0 +1,29 @@
+services:
+  frontend:
+    image: dnswebapp:latest
+    restart: always
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    networks:
+      - dnsnetwork
+    container_name: dnsfrontend
+    depends_on:
+      - api
+
+  api:
+    image: dnsapi:latest
+    restart: always
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    networks:
+      - dnsnetwork
+    container_name: dnsapi
+    depends_on:
+      - mongodb
+      - cache
+    ports:
+      - 3000:3000
+    env_file:
+      - ./api/.env

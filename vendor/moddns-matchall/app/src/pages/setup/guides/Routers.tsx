@@ -1,0 +1,469 @@
+import React from 'react';
+import { ShieldCheck, EyeOff, ChevronRight } from 'lucide-react';
+import CodeBlock from '@/components/setup/CodeBlock';
+import { buildDnscryptProxyToml } from '@/components/setup/dnscryptProxy';
+import api from '@/api/api';
+import type { ResponsesDNSStampResponse } from '@/api/client';
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const routersBadges = [
+    { label: 'Routers' },
+    { label: 'DNS over HTTPS' },
+    { label: 'DNS over TLS' },
+
+];
+
+export interface RoutersGuideDeps {
+    dohEndpoint: string;      // https://<dnsServerDomain>/dns-query/<profileId>
+    anycastIpv4: string;      // primary IPv4 from env list
+    anycastIpv6?: string;     // anycast IPv6 from env list; shown only when configured
+    dnsServerDomain: string;  // e.g. dns.moddns.net (from env)
+    dotHostname: string;      // <profileId>.<dnsServerDomain>
+    profileId: string;        // active profile id — required by the DNS Stamps tab
+}
+
+interface RouterTabDef {
+    key: string;
+    label: string;
+    content: React.ReactNode;
+}
+
+const SectionLabel = ({ children }: { children: React.ReactNode }) => (
+    <div className="text-xs font-semibold tracking-[0.08em] uppercase text-[var(--tailwind-colors-slate-300)]">
+        {children}
+    </div>
+);
+
+const SectionDivider = () => (
+    <div className="h-px w-full bg-[var(--tailwind-colors-slate-700)]" />
+);
+
+const StepBlock = ({ number, text }: { number: number; text: React.ReactNode }) => (
+    <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2.5">
+            <div className="text-sm text-[var(--tailwind-colors-slate-200)] leading-5 font-['Roboto_Flex-Regular',Helvetica]">
+                STEP {number}
+            </div>
+        </div>
+        <div className="text-sm text-[var(--tailwind-colors-slate-50)] leading-6 font-['Roboto_Flex-Regular',Helvetica]">
+            {text}
+        </div>
+    </div>
+);
+
+const buildMikrotikCommands = ({ dohEndpoint, anycastIpv4, anycastIpv6, dnsServerDomain }: RoutersGuideDeps) => (
+    `/ip dns set servers=""\n` +
+    `/ip dns static add name=${dnsServerDomain} address=${anycastIpv4} type=A\n` +
+    (anycastIpv6 ? `/ip dns static add name=${dnsServerDomain} address=${anycastIpv6} type=AAAA\n` : ``) +
+    `/ip dns set use-doh-server="${dohEndpoint}" verify-doh-cert=yes\n` +
+    `/ip dns set allow-remote-requests=yes`
+);
+
+const buildOpenWrtCommands = ({ dohEndpoint, anycastIpv4, anycastIpv6 }: RoutersGuideDeps) => (
+    `# OpenWrt 24.10 and older use opkg package manager\n` +
+    `opkg update\n` +
+    `opkg install https-dns-proxy\n\n` +
+    `# OpenWrt 25.12 and newer use apk package manager\n` +
+    `apk update\n` +
+    `apk add https-dns-proxy\n\n` +
+    `while uci -q delete https-dns-proxy.@https-dns-proxy[0]; do :; done\n` +
+    `uci set https-dns-proxy.dns="https-dns-proxy"\n` +
+    `uci set https-dns-proxy.dns.bootstrap_dns="${anycastIpv6 ? `${anycastIpv4},${anycastIpv6}` : anycastIpv4}"\n` +
+    `uci set https-dns-proxy.dns.resolver_url="${dohEndpoint}"\n` +
+    `uci set https-dns-proxy.dns.listen_addr="127.0.0.1"\n` +
+    `uci set https-dns-proxy.dns.listen_port="5053"\n` +
+    `uci commit https-dns-proxy\n` +
+    `service https-dns-proxy restart`
+);
+
+const StampsCrossLink = () => (
+    <div className="text-xs text-[var(--tailwind-colors-slate-200)] leading-relaxed">
+        Device only accepts <code className="font-mono">sdns://</code> strings? See the DNS Stamps tab.
+    </div>
+);
+
+const StampRow = ({ label, compat, value, loading }: { label: string; compat: string; value: string; loading: boolean }) => (
+    <div className="flex flex-col gap-1.5">
+        <SectionLabel>{label}</SectionLabel>
+        <div className="text-xs text-[var(--tailwind-colors-slate-200)] leading-relaxed">{compat}</div>
+        {loading ? (
+            <div className="h-9 rounded border border-[var(--tailwind-colors-slate-700)] bg-[var(--tailwind-colors-slate-900)] animate-pulse" />
+        ) : (
+            <CodeBlock value={value} noWrap />
+        )}
+    </div>
+);
+
+const TrustPill = ({ icon: Icon, label }: { icon: typeof ShieldCheck; label: string }) => (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-[var(--tailwind-colors-slate-700)] bg-[var(--tailwind-colors-slate-900)] text-xs text-[var(--tailwind-colors-slate-300)]">
+        <Icon className="w-3 h-3" aria-hidden />
+        {label}
+    </span>
+);
+
+const StampsTab = ({ deps }: { deps: RoutersGuideDeps }) => {
+    const [stamps, setStamps] = React.useState<ResponsesDNSStampResponse | null>(null);
+    const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState<string | null>(null);
+    const [advancedOpen, setAdvancedOpen] = React.useState(false);
+    const [deviceLabel, setDeviceLabel] = React.useState('');
+
+    const fetchStamps = React.useCallback(async (deviceId: string) => {
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await api.Client.dnsStampsApi.apiV1DnsstampPost({
+                profile_id: deps.profileId,
+                device_id: deviceId,
+            });
+            setStamps(res.data);
+        } catch {
+            setError('Could not generate stamps. Try again.');
+            setStamps(null);
+        } finally {
+            setLoading(false);
+        }
+    }, [deps.profileId]);
+
+    // Initial fetch without a device id.
+    React.useEffect(() => { fetchStamps(''); }, [fetchStamps]);
+
+    // Debounce device-label edits — refetch 300ms after the user stops typing.
+    React.useEffect(() => {
+        if (!advancedOpen) return;
+        const handle = setTimeout(() => { fetchStamps(deviceLabel); }, 300);
+        return () => clearTimeout(handle);
+    }, [deviceLabel, advancedOpen, fetchStamps]);
+
+    return (
+        <div className="flex flex-col gap-6" data-testid="stamps-tab">
+            <div className="flex flex-col gap-3">
+                <p className="text-sm leading-6 text-[var(--tailwind-colors-slate-50)]">
+                    Paste these into UniFi Network, dnscrypt-proxy, AdGuard Home upstreams,
+                    or any client that accepts the <code className="font-mono">sdns://</code> format.
+                </p>
+                <p className="text-xs leading-relaxed text-[var(--tailwind-colors-slate-200)]">
+                    DNS Stamps bundle a resolver's address, protocol, and certificate hints
+                    into one <code className="font-mono">sdns://</code> string. See{' '}
+                    <a
+                        href="https://dnscrypt.info/stamps-specifications/"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="!underline !text-[var(--tailwind-colors-slate-300)]"
+                    >
+                        <code className="font-mono">dnscrypt.info/stamps-specifications</code>
+                    </a>{' '}
+                    for the format spec.
+                </p>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--tailwind-colors-slate-200)]">
+                    <span>Resolver advertises:</span>
+                    <TrustPill icon={ShieldCheck} label="DNSSEC" />
+                    <TrustPill icon={EyeOff} label="No logs" />
+                    <a
+                        href="/privacy"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="!underline !text-[var(--tailwind-colors-slate-300)]"
+                    >
+                        How modDNS handles logs
+                    </a>
+                </div>
+            </div>
+
+            <SectionDivider />
+
+            {error ? (
+                <div
+                    role="alert"
+                    className="flex items-center justify-between rounded border border-[var(--tailwind-colors-slate-700)] bg-[var(--tailwind-colors-slate-900)] px-3 py-2 text-sm text-[var(--tailwind-colors-slate-200)]"
+                >
+                    <span>{error}</span>
+                    <button
+                        type="button"
+                        onClick={() => fetchStamps(advancedOpen ? deviceLabel : '')}
+                        className="text-xs px-2 py-1 rounded-md bg-[var(--tailwind-colors-rdns-600)] text-white hover:opacity-90"
+                    >
+                        Retry
+                    </button>
+                </div>
+            ) : (
+                <div className="flex flex-col gap-4" data-testid="stamps-list">
+                    <StampRow
+                        label="DNS over HTTPS - Recommended"
+                        compat="Works with: UniFi Network, AdGuard Home, dnscrypt-proxy, Intra, Pi-hole (via dnscrypt-proxy), and most sdns:// consumers"
+                        value={stamps?.doh ?? ''}
+                        loading={loading}
+                    />
+
+                    <div className="flex flex-col gap-1.5" data-testid="dnscrypt-proxy-config">
+                        <SectionLabel>Use with dnscrypt-proxy</SectionLabel>
+                        <div className="text-xs text-[var(--tailwind-colors-slate-200)] leading-relaxed">
+                            Running <strong>dnscrypt-proxy</strong>? Paste this into your{' '}
+                            <code className="font-mono">dnscrypt-proxy.toml</code> to consume the DoH stamp above.
+                        </div>
+                        {loading || !stamps?.doh ? (
+                            <div className="h-9 rounded border border-[var(--tailwind-colors-slate-700)] bg-[var(--tailwind-colors-slate-900)] animate-pulse" />
+                        ) : (
+                            <CodeBlock value={buildDnscryptProxyToml(deps.profileId, stamps.doh)} />
+                        )}
+                    </div>
+
+                    <div className="flex flex-col gap-1.5 pt-2">
+                        <SectionLabel>DoT / DoQ - AdGuard only</SectionLabel>
+                        <div className="text-xs text-[var(--tailwind-colors-slate-200)] leading-relaxed">
+                            DoT and DoQ stamps are part of the sdns:// spec but only{' '}
+                            <strong>AdGuard Home</strong> and <strong>AdGuard dnsproxy</strong> parse them today.
+                            For routers, firewalls, and most other clients, use the DoH stamp above or follow the
+                            per-platform guides under <strong>Setup</strong>.
+                        </div>
+                    </div>
+
+                    <StampRow
+                        label="DNS over TLS"
+                        compat="Works with: AdGuard Home, AdGuard dnsproxy"
+                        value={stamps?.dot ?? ''}
+                        loading={loading}
+                    />
+                    <StampRow
+                        label="DNS over QUIC"
+                        compat="Works with: AdGuard Home, AdGuard dnsproxy"
+                        value={stamps?.doq ?? ''}
+                        loading={loading}
+                    />
+                </div>
+            )}
+
+            <SectionDivider />
+
+            <details
+                className="text-sm group"
+                open={advancedOpen}
+                onToggle={(e) => setAdvancedOpen((e.target as HTMLDetailsElement).open)}
+                data-testid="stamps-advanced"
+            >
+                <summary className="flex items-center gap-2 cursor-pointer text-[var(--tailwind-colors-slate-300)] hover:text-[var(--tailwind-colors-slate-100)] select-none list-none [&::-webkit-details-marker]:hidden">
+                    <ChevronRight
+                        className={`w-4 h-4 transition-transform duration-200 ${advancedOpen ? 'rotate-90' : ''}`}
+                        aria-hidden
+                    />
+                    <span>Advanced options</span>
+                </summary>
+                <div className="mt-3 flex flex-col gap-2 pl-6">
+                    <label
+                        htmlFor="stamps-device-label"
+                        className="text-xs font-semibold tracking-[0.04em] text-[var(--tailwind-colors-slate-300)]"
+                    >
+                        Device label (optional)
+                    </label>
+                    <input
+                        id="stamps-device-label"
+                        type="text"
+                        value={deviceLabel}
+                        onChange={(e) => setDeviceLabel(e.target.value)}
+                        placeholder="e.g. Living Room"
+                        maxLength={36}
+                        data-testid="stamps-device-input"
+                        className="px-3 py-2 rounded border border-[var(--tailwind-colors-slate-700)] bg-[var(--tailwind-colors-slate-900)] text-sm text-[var(--tailwind-colors-slate-50)] focus:outline-none focus:border-[var(--tailwind-colors-rdns-600)]"
+                    />
+                    <div className="text-xs text-[var(--tailwind-colors-slate-200)] leading-relaxed">
+                        Tag stamps per device for separate query logs. Stamps update automatically.
+                        Allowed: letters, digits, spaces, hyphens.
+                    </div>
+                </div>
+            </details>
+        </div>
+    );
+};
+
+const buildRouterTabs = (deps: RoutersGuideDeps): RouterTabDef[] => [
+    {
+        key: 'mikrotik',
+        label: 'Mikrotik RouterOS',
+        content: (
+            <div className="flex flex-col gap-6">
+                <StepBlock number={1} text={<span>Access the device’s command-line interface, and enter the following commands:</span>} />
+                <div>
+                    <CodeBlock value={buildMikrotikCommands(deps)} />
+                </div>
+                <StampsCrossLink />
+            </div>
+        )
+    },
+    {
+        key: 'pfsense',
+        label: 'pfSense',
+        content: (
+            <div className="flex flex-col gap-6">
+                <SectionLabel>System &gt; General Setup &gt; DNS Server Settings:</SectionLabel>
+                <div className="flex flex-col gap-6">
+                    <StepBlock number={1} text={<span><strong>DNS Servers:</strong> clear all entries from <span className="font-medium">DNS Servers</span></span>} />
+                    <StepBlock
+                        number={2}
+                        text={(
+                            <span>
+                                <strong>DNS Servers:</strong> add <CodeBlock inline noWrap value={deps.anycastIpv4} /> to <span className="font-medium">Address</span> and{' '}
+                                <CodeBlock inline noWrap value={deps.dotHostname} /> to <span className="font-medium">Hostname</span>, repeat for each IP address, hostname is always the same
+                                {deps.anycastIpv6 && (
+                                    <>
+                                        {' '}— you can also add the IPv6 address <CodeBlock inline noWrap value={deps.anycastIpv6} /> with the same hostname
+                                    </>
+                                )}
+                            </span>
+                        )}
+                    />
+                    <StepBlock
+                        number={3}
+                        text={<span><strong>DNS Server Override:</strong> uncheck <span className="font-medium">Allow DNS server list to overridden by DHCP...</span></span>}
+                    />
+                    <StepBlock
+                        number={4}
+                        text={<span><strong>DNS Resolution Behavior:</strong> select <span className="font-medium">Use local DNS (127.0.0.1), ignore remote DNS servers</span></span>}
+                    />
+                    <StepBlock number={5} text={<span className="font-medium">Save</span>} />
+                </div>
+
+                <SectionDivider />
+
+                <SectionLabel>Services &gt; DNS Resolver &gt; General Settings:</SectionLabel>
+                <div className="flex flex-col gap-6">
+                    <StepBlock number={1} text={<span><strong>DNSSEC:</strong> uncheck <span className="font-medium">Enable DNSSEC support</span></span>} />
+                    <StepBlock
+                        number={2}
+                        text={<span><strong>DNS Query Forwarding:</strong> check <span className="font-medium">Enable Forwarding Mode</span>, and <span className="font-medium">Use SSL/TLS for outgoing DNS queries to Forwarding Servers</span></span>}
+                    />
+                    <StepBlock number={3} text={<span className="font-medium">Save and Apply</span>} />
+                </div>
+                <StampsCrossLink />
+            </div>
+        )
+    },
+    {
+        key: 'opnsense',
+        label: 'OPNsense',
+        content: (
+            <div className="flex flex-col gap-6">
+                <SectionLabel>System &gt; Configuration &gt; Backups:</SectionLabel>
+                <StepBlock number={1} text={<span><strong>Download configuration:</strong> known good</span>} />
+
+                <SectionDivider />
+
+                <SectionLabel>Services &gt; Unbound DNS &gt; General:</SectionLabel>
+                <div className="flex flex-col gap-6">
+                    <StepBlock number={1} text={<span><strong>Enable DNSSEC Support:</strong> unchecked</span>} />
+                    <StepBlock number={2} text={<span><span className="font-medium">Apply</span>, if required</span>} />
+                </div>
+
+                <SectionDivider />
+
+                <SectionLabel>Services &gt; Unbound DNS &gt; DNS over TLS:</SectionLabel>
+                <div className="flex flex-col gap-6">
+                    <StepBlock number={1} text={<span><strong>Use System Nameservers:</strong> unchecked</span>} />
+                    <StepBlock number={2} text={<span>Click <strong>+</strong> to add a server</span>} />
+                    <StepBlock number={3} text={<span><strong>Enabled:</strong> checked</span>} />
+                    <StepBlock number={4} text={<span><strong>Domain:</strong> leave this field empty</span>} />
+                    <StepBlock number={5} text={<span><strong>Server IP:</strong> <CodeBlock inline noWrap value={deps.anycastIpv4} />{deps.anycastIpv6 && <> (or IPv6 <CodeBlock inline noWrap value={deps.anycastIpv6} />)</>}</span>} />
+                    <StepBlock number={6} text={<span><strong>Server Port:</strong> <CodeBlock inline noWrap value="853" /></span>} />
+                    <StepBlock number={7} text={<span><strong>Forward First:</strong> unchecked</span>} />
+                    <StepBlock number={8} text={<span><strong>Verify CN:</strong> <CodeBlock inline noWrap value={deps.dotHostname} /></span>} />
+                    <StepBlock number={9} text={<span><strong>Description:</strong> optional</span>} />
+                    <StepBlock number={10} text={<span className="font-medium">Save and Apply</span>} />
+                </div>
+
+                <div className="text-xs text-[var(--tailwind-colors-slate-400)] leading-relaxed">
+                    To add more servers, only the <strong>Server IP</strong> address above changes, hostname is always the same.
+                </div>
+
+                <SectionDivider />
+
+                <SectionLabel>System &gt; Settings &gt; General &gt; Networking:</SectionLabel>
+                <div className="flex flex-col gap-6">
+                    <StepBlock number={1} text={<span><strong>DNS servers:</strong> clear all entries</span>} />
+                    <StepBlock
+                        number={2}
+                        text={<span><strong>DNS server options:</strong> uncheck <span className="font-medium">Allow DNS server list to overridden by DHCP...</span></span>}
+                    />
+                    <StepBlock number={3} text={<span className="font-medium">Save</span>} />
+                </div>
+                <StampsCrossLink />
+            </div>
+        )
+    },
+    {
+        key: 'openwrt',
+        label: 'OpenWrt',
+        content: (
+            <div className="flex flex-col gap-6">
+                <StepBlock number={1} text={<span>Access the command line:</span>} />
+                <div>
+                    <CodeBlock value={buildOpenWrtCommands(deps)} />
+                </div>
+                <StampsCrossLink />
+            </div>
+        )
+    },
+    {
+        key: 'stamps',
+        label: 'DNS Stamps',
+        content: <StampsTab deps={deps} />
+    }
+];
+
+const RouterTabs = ({ deps }: { deps: RoutersGuideDeps }) => {
+    const [active, setActive] = React.useState<string>('mikrotik');
+    const routerTabs = React.useMemo(() => buildRouterTabs(deps), [deps]);
+    return (
+        <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap gap-2">
+                {routerTabs.map(tab => (
+                    <button
+                        key={tab.key}
+                        onClick={() => setActive(tab.key)}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs sm:text-sm transition-all duration-300 transform hover:scale-105 active:scale-100 cursor-pointer ${active === tab.key
+                            ? 'bg-[var(--tailwind-colors-rdns-600)] border-[var(--tailwind-colors-rdns-600)] text-white'
+                            : 'bg-[var(--tailwind-colors-slate-900)] border-[var(--tailwind-colors-slate-700)] text-[var(--tailwind-colors-slate-300)] hover:bg-[var(--tailwind-colors-slate-800)]'
+                            }`}
+                        type="button"
+                    >
+                        <span>{tab.label}</span>
+                    </button>
+                ))}
+            </div>
+            <div className="p-4 rounded-md">
+                {routerTabs.find(t => t.key === active)?.content}
+            </div>
+        </div>
+    );
+};
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const createRoutersSteps = (deps: RoutersGuideDeps) => {
+    return [
+        {
+            instruction: (
+                <div className="flex flex-col gap-4">
+                    <p className="text-sm leading-6 text-[var(--tailwind-colors-slate-200)]">
+                        Select your router/firewall platform below.
+                    </p>
+                    <RouterTabs deps={deps} />
+                </div>
+            )
+        }
+    ];
+};
+
+// Default (generic) steps so the panel can render without injected deps.
+// eslint-disable-next-line react-refresh/only-export-components
+export const routersSteps = createRoutersSteps({
+    dohEndpoint: 'https://example.com/dns-query/your-profile-id',
+    anycastIpv4: '0.0.0.0',
+    dnsServerDomain: 'example.com',
+    dotHostname: 'your-profile-id.example.com',
+    profileId: 'your-profile-id'
+});
+
+const RoutersGuide = {
+    badges: routersBadges,
+    steps: routersSteps,
+};
+
+export default RoutersGuide;

@@ -1,0 +1,26 @@
+[
+  {
+    "blocklist_id": "oisd_big",
+    "name": "OISD - Big",
+    "description": "Blocks Ads, (Mobile) App Ads, Phishing, Malvertising, Malware, Spyware, Ransomware, CryptoJacking, Scam, ... Telemetry/Analytics/Tracking (Where not needed for proper functionality)",
+    "source_url": "https://big.oisd.nl/domainswild2",
+    "homepage": "https://oisd.nl/downloads",
+    "syntax": "domains",
+    "kind": "general",
+    "intensity": ["comprehensive", "restrictive"],
+    "tags": ["oisd", "comprehensive", "ads", "malware", "phishing", "tracking"],
+    "schedule": "0 3 * * *"
+  },
+  {
+    "blocklist_id": "oisd_small",
+    "name": "OISD - Small",
+    "description": "Mainly focusses on blocking ads",
+    "source_url": "https://small.oisd.nl/domainswild2",
+    "homepage": "https://oisd.nl/downloads",
+    "syntax": "domains",
+    "kind": "general",
+    "intensity": ["basic"],
+    "tags": ["oisd", "basic", "ads"],
+    "schedule": "0 4 * * *"
+  }
+]

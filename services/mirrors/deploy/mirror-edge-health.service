@@ -1,0 +1,6 @@
+[Unit]
+Description=Verify MatchAll Mirrors Guangzhou edge health
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/mirror-edge-health

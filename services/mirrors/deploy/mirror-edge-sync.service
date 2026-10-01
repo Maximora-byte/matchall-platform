@@ -1,0 +1,14 @@
+[Unit]
+Description=Initial MatchAll Mirrors Guangzhou attachment synchronization
+After=network-online.target mirror-edge.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/mirror-edge-sync
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+
+[Install]
+WantedBy=multi-user.target

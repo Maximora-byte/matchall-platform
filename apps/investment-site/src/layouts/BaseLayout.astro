@@ -1,0 +1,8 @@
+---
+import '../styles/site.css';
+interface Props { title: string; description: string; path?: string; }
+const { title, description, path = '/' } = Astro.props;
+const canonical = new URL(path, 'https://investment.maximoraverse.org').toString();
+const links = [{href:'/',label:'首页'},{href:'/fund/',label:'基金净值'},{href:'/holdings/',label:'公开持仓'},{href:'/news/',label:'新闻与披露'}];
+---
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f4f7f5" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#07100d" media="(prefers-color-scheme: dark)"><title>{title}</title><meta name="description" content={description}><link rel="canonical" href={canonical}><meta property="og:type" content="website"><meta property="og:site_name" content="OpenClaw Investment"><meta property="og:title" content={title}><meta property="og:description" content={description}><meta property="og:url" content={canonical}><meta property="og:image" content="https://www.maximoraverse.org/assets/brand/matchall-social-1200x630.png"><meta name="twitter:card" content="summary_large_image"></head><body><a class="skip" href="#main">跳到主要内容</a><header class="topbar"><a class="wordmark" href="/" aria-label="OpenClaw Investment 首页"><span class="mark" aria-hidden="true">◌</span><span>OpenClaw</span><small>Investment</small></a><nav aria-label="主导航">{links.map(link=><a href={link.href} aria-current={path===link.href?'page':undefined}>{link.label}</a>)}</nav></header><main id="main"><slot /></main><footer class="footer shell"><span>© 2026 OpenClaw Investment</span><span>公开、克制、可核验</span><a href="https://www.maximoraverse.org/contact/">数据问题反馈</a></footer></body></html>

@@ -1,0 +1,4 @@
+/* MatchAll brand rollout 20260926: scoped to brand marks only. */
+.brand{display:inline-flex;align-items:center;gap:12px}
+.brand img.matchall-brand-symbol{display:block;width:42px;height:42px;min-width:42px;object-fit:contain;border:0;border-radius:0;background:none;box-shadow:none}
+@media(max-width:400px){.brand{gap:8px}.brand img.matchall-brand-symbol{width:36px;height:36px;min-width:36px}}

@@ -1,0 +1,77 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+
+const services = [
+  {name: "MatchAll Network", label: "Network", icon: "◎", href: "https://proxyservice.maximoraverse.org/", class: "network", text: "连接多个国家和地区，多线路与多设备支持，让跨区域访问更顺畅。", meta: "多区域 · 多线路 · 多设备"},
+  {name: "MatchAll Drive", label: "Drive", icon: "☁", href: "https://drive.maximoraverse.org/", class: "drive", text: "大容量私人云存储、多端同步与不限速下载，重要文件随时可取。", meta: "同步 · WebDAV · 私人空间"},
+  {name: "MatchAll DNS", label: "DNS", icon: "◉", href: "https://dns.maximoraverse.org/", class: "dns", text: "支持 DoH、DoT 与 DoQ 的加密 DNS，提供过滤、自定义规则和统计。", meta: "加密 · 过滤 · 可观测"},
+  {name: "MatchAll Account", label: "Account", icon: "◇", href: "https://auth.maximoraverse.org/", class: "account-card", text: "一个安全身份访问全部服务。", meta: "OIDC · 安全验证"},
+  {name: "MatchAll Mirrors", label: "Mirrors", icon: "⬡", href: "https://mirrors.maximoraverse.org/", class: "mirrors", text: "版本发布、更新 API 与下载分发。", meta: "Release · API · SHA-256"},
+  {name: "MatchAll Blog", label: "Blog", icon: "✦", href: "https://blog.maximoraverse.org/", class: "blog", text: "技术实践、产品动态与公告。", meta: "Engineering · Updates"},
+];
+---
+
+<BaseLayout title="MatchAll｜连接每一种数字生活" description="统一账户、私人云存储、全球网络、隐私 DNS、软件镜像与技术博客。">
+  <Header />
+  <main id="main-content">
+    <section class="shell hero">
+      <div class="hero-copy matchall-reveal">
+        <a class="status-pill" href="https://status.maximoraverse.org/"><span></span>所有核心服务在线 <b>查看状态 ↗</b></a>
+        <p class="eyebrow">One identity · Many possibilities</p>
+        <h1>连接每一种<br /><em>数字生活。</em></h1>
+        <p class="lead">MatchAll 将统一账户、私人云存储、全球网络、隐私 DNS、软件分发与技术内容连接在同一体验中。清晰、可靠，也更像一个整体。</p>
+        <div class="actions">
+          <a class="button button-primary" href="#services">探索全部服务 ↓</a>
+          <a class="button button-quiet" href="https://auth.maximoraverse.org/register">使用邀请码注册</a>
+        </div>
+        <div class="trust"><span>统一身份认证</span><span>隐私与政策公开</span><span>多端访问</span><span>持续维护</span></div>
+      </div>
+      <div class="visual matchall-reveal" aria-hidden="true">
+        <img src="/assets/ecosystem-orbit.svg" alt="" width="560" height="560" />
+        <div class="visual-core"><img src="/assets/brand/matchall-symbol.svg" alt="" width="76" height="76" /></div>
+        <div class="float-card f-account"><span>◇</span><b>Account</b><small>统一身份</small></div>
+        <div class="float-card f-network"><span>◎</span><b>Network</b><small>全球连接</small></div>
+        <div class="float-card f-drive"><span>☁</span><b>Drive</b><small>私人云端</small></div>
+      </div>
+    </section>
+
+    <section class="shell proof matchall-reveal" aria-label="平台特点">
+      <div><strong>1</strong><span>个统一账户</span></div>
+      <div><strong>9</strong><span>项数字服务</span></div>
+      <div><strong>3</strong><span>种加密 DNS 协议</span></div>
+      <div><strong>24/7</strong><span>状态与自动监控</span></div>
+    </section>
+
+    <section class="shell services-section" id="services">
+      <div class="section-heading matchall-reveal">
+        <div><p class="eyebrow">MatchAll ecosystem</p><h2>每项服务，各司其职</h2></div>
+        <p>统一视觉与账户体验，背后仍由职责清晰、可独立回滚的服务组成。</p>
+      </div>
+      <div class="service-grid">
+        {services.map((service, index) => (
+          <a class:list={["service-card", service.class, index < 3 && "featured", "matchall-reveal"]} href={service.href}>
+            <span class="service-icon">{service.icon}</span>
+            <div class="service-copy"><small>{service.label}</small><h3>{service.name}</h3><p>{service.text}</p></div>
+            <span class="service-meta">{service.meta}</span><span class="service-go">↗</span>
+          </a>
+        ))}
+      </div>
+    </section>
+
+    <section class="shell story-grid">
+      <article class="story-panel matchall-reveal">
+        <p class="eyebrow">Built in the open</p><h2>不仅提供服务，也公开方法。</h2>
+        <p>从 DNS 递归、跨境网络到身份与存储，我们持续记录架构、测试、失败实验与回滚方式。</p>
+        <a class="text-link" href="https://blog.maximoraverse.org/">阅读技术博客 →</a>
+      </article>
+      <article class="story-panel story-accent matchall-reveal">
+        <p class="eyebrow">Start here</p><h2>一个账户，连接更多可能。</h2>
+        <p>通过统一身份进入 Network、Drive、Mirrors 和其他 MatchAll 服务。</p>
+        <div class="actions"><a class="button button-primary" href="https://auth.maximoraverse.org/register">创建账户 →</a><a class="button button-quiet" href="https://docs.maximoraverse.org/">查看文档</a></div>
+      </article>
+    </section>
+  </main>
+  <Footer />
+</BaseLayout>

@@ -1,0 +1,36 @@
+---
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width">
+    <meta name="robots" content="noindex,follow">
+    <meta name="theme-color" content="#f6f7fa" media="(prefers-color-scheme:light)">
+    <meta name="theme-color" content="#090a0c" media="(prefers-color-scheme:dark)">
+    <title>内容未找到 · MatchAll Blog</title>
+    <style>
+      :root{color-scheme:light dark;--bg:#f6f7fa;--card:#fff;--text:#161a22;--muted:#687180;--line:#dce2e9;--accent:#7c3aed}
+      *{box-sizing:border-box}
+      body.error-page{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;font:16px/1.65 system-ui,sans-serif;background:radial-gradient(circle at 50% 0,#ede9fe,transparent 40%),var(--bg);color:var(--text)}
+      main{width:min(680px,100%);padding:clamp(28px,7vw,64px);border:1px solid var(--line);border-radius:28px;background:color-mix(in srgb,var(--card) 90%,transparent)}
+      .code{font-size:.8rem;font-weight:800;letter-spacing:.22em;color:var(--accent)}
+      h1{font-size:clamp(2.5rem,10vw,5rem);line-height:1;margin:.2em 0}
+      .lead{color:var(--muted)}
+      .actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:28px}
+      a{min-height:44px;display:inline-flex;align-items:center;padding:.75rem 1rem;border:1px solid var(--line);border-radius:999px;color:inherit;text-decoration:none;background:var(--card)}
+      a.primary{background:var(--text);color:var(--bg)}
+      a:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+      @media(prefers-color-scheme:dark){:root{--bg:#090a0c;--card:#111318;--text:#f4f5f7;--muted:#9ba3b0;--line:#292e37;--accent:#c4b5fd}body.error-page{background:radial-gradient(circle at 50% 0,#2e1065,transparent 40%),var(--bg)}}
+    </style>
+  </head>
+  <body class="error-page">
+    <main>
+      <p class="code">ERROR 404</p>
+      <h1>没有找到这篇内容。</h1>
+      <p class="lead">链接可能已经更新。你可以返回博客首页、浏览文档中心，或使用全站搜索寻找相关内容。</p>
+      <nav class="actions" aria-label="恢复导航"><a class="primary" href="/">返回博客</a><a href="/docs/">文档中心</a><a href="/archive/">文章归档</a></nav>
+    </main>
+  </body>
+</html>

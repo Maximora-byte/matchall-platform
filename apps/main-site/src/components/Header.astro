@@ -1,0 +1,24 @@
+---
+const links = [
+  ["控制台", "https://console.maximoraverse.org/"],
+  ["文档", "https://docs.maximoraverse.org/"],
+  ["账户", "https://auth.maximoraverse.org/"],
+  ["网盘", "https://drive.maximoraverse.org/"],
+  ["网络", "https://proxyservice.maximoraverse.org/"],
+  ["DNS", "https://dns.maximoraverse.org/"],
+  ["镜像", "https://mirrors.maximoraverse.org/"],
+  ["博客", "https://blog.maximoraverse.org/"],
+  ["状态", "https://status.maximoraverse.org/"],
+];
+---
+
+<header class="shell nav-shell">
+  <a class="brand" href="/" aria-label="MatchAll 首页">
+    <img src="/assets/brand/matchall-symbol.svg" alt="" width="38" height="38" />
+    <span>MatchAll<small>Digital services</small></span>
+  </a>
+  <nav class="nav-links" aria-label="主要服务">
+    {links.map(([label, href]) => <a href={href}>{label}</a>)}
+  </nav>
+  <a class="button button-quiet nav-action" href="https://console.maximoraverse.org/">用户中心 →</a>
+</header>

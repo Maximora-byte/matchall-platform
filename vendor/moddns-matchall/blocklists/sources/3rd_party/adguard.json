@@ -1,0 +1,14 @@
+[
+  {
+    "blocklist_id": "adguard_dns_filter",
+    "name": "AdGuard DNS filter",
+    "description": "A filter composed of several other filters (AdGuard Base filter, Social media filter, Tracking Protection filter, Mobile Ads filter, EasyList and EasyPrivacy) and simplified specifically to be better compatible with DNS-level ad blocking.",
+    "source_url": "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt",
+    "homepage": "https://github.com/AdguardTeam/AdGuardSDNSFilter",
+    "syntax": "adblock",
+    "kind": "general",
+    "intensity": ["comprehensive", "restrictive"],
+    "tags": ["adguard", "comprehensive"],
+    "schedule": "@hourly"
+  }
+]

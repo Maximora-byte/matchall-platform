@@ -1,0 +1,702 @@
+import { type JSX, useState, useEffect } from "react";
+import AlertCard from "@/components/general/AlertCard";
+import BlocklistCard from "./BlocklistCard";
+import EmptyState from "@/pages/blocklists/NoBlocklistsFound";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
+    ListFilterIcon,
+    SearchIcon,
+    ToggleLeftIcon,
+    ToggleRightIcon,
+    ArrowUpDown,
+} from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+    ApiV1BlocklistsGetSortByEnum,
+    ModelProfileUpdateOperationEnum,
+    ModelProfileUpdatePathEnum,
+    type ApiBlocklistsUpdates,
+    type ModelBlocklist,
+} from "@/api/client/api";
+import api from "@/api/api";
+import { useAppStore } from "@/store/general";
+import { useSubscriptionGuard } from "@/hooks/useSubscriptionGuard";
+import LimitedAccessBanner from "@/components/LimitedAccessBanner";
+import BetaEndingBanner from "@/components/BetaEndingBanner";
+import { formatDistanceToNow, parseISO } from "date-fns";
+import { toast } from "sonner";
+import axios from "axios";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import ServicesContentSection from "@/pages/blocklists/ServicesContentSection";
+import SecurityContentSection from "@/pages/blocklists/SecurityContentSection";
+import CategoriesContentSection from "@/pages/blocklists/CategoriesContentSection";
+
+const INDIVIDUAL_LISTS = [
+    { label: "Hagezi", tag: "hagezi" },
+    { label: "Adguard", tag: "adguard" },
+    { label: "OISD", tag: "oisd" },
+    { label: "Steven Black", tag: "steven_black" },
+    { label: "1Hosts", tag: "1hosts" },
+    { label: "Peter Lowe", tag: "peter_lowe" },
+    { label: "Dan Pollock", tag: "someonewhocares" },
+];
+
+const PREDEFINED_LISTS = [
+    { label: "Basic", tag: "basic" },
+    { label: "Comprehensive", tag: "comprehensive" },
+    { label: "Restrictive", tag: "restrictive" },
+];
+
+const PREDEFINED_INTENSITY = new Set(["basic", "comprehensive", "restrictive"]);
+
+const STATUS_FILTERS = [
+    { label: "Enabled", value: "enabled" },
+    { label: "Disabled", value: "disabled" },
+];
+
+const SORT_OPTIONS: Array<{ label: string; value: ApiV1BlocklistsGetSortByEnum }> = [
+    {
+        label: "Recently updated",
+        value: ApiV1BlocklistsGetSortByEnum.Updated,
+    },
+    {
+        label: "Name A–Z",
+        value: ApiV1BlocklistsGetSortByEnum.Name,
+    },
+    {
+        label: "Most entries",
+        value: ApiV1BlocklistsGetSortByEnum.Entries,
+    },
+];
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const formatUpdatedRelative = (isoDate?: string): string => {
+    if (!isoDate) return "";
+    const raw = formatDistanceToNow(parseISO(isoDate), { addSuffix: true });
+    if (raw.startsWith("about ")) {
+        return `~${raw.slice(6)}`;
+    }
+    return raw;
+};
+
+function ToggleListedButton({
+    active,
+    disableMode,
+    updating,
+    restricted,
+    onClick,
+    sizeClassName,
+}: {
+    active: boolean;
+    disableMode: boolean;
+    updating: boolean;
+    restricted: boolean;
+    onClick: () => void;
+    sizeClassName: string;
+}): JSX.Element {
+    const ToggleIcon = disableMode ? ToggleRightIcon : ToggleLeftIcon;
+    const actionLabel = disableMode ? "Disable" : "Enable";
+    return (
+        <Button
+            data-testid="toggle-listed-blocklists"
+            aria-label={`${actionLabel} listed blocklists`}
+            variant="outline"
+            size="icon"
+            className={`${sizeClassName} !bg-[var(--shadcn-ui-app-background)] border-[var(--tailwind-colors-slate-700)] ${active && !restricted ? "opacity-100" : "opacity-50"}`}
+            disabled={!active || updating || restricted}
+            onClick={onClick}
+            title={restricted ? "Feature unavailable in limited access mode" : `${actionLabel} currently listed blocklists`}
+        >
+            <ToggleIcon className={`w-4 h-4 ${active ? 'text-[var(--tailwind-colors-rdns-600)]' : 'text-[var(--tailwind-colors-slate-500)]'}`} />
+        </Button>
+    );
+}
+
+export default function MainContentSection(): JSX.Element {
+    const { isRestricted } = useSubscriptionGuard();
+    const [activeTab, setActiveTab] = useState("blocklists");
+    const blocklistsAlertDismissed = useAppStore((state) => state.blocklistsAlertDismissed);
+    const setBlocklistsAlertDismissed = useAppStore((state) => state.setBlocklistsAlertDismissed);
+    const [blocklists, setBlocklists] = useState<ModelBlocklist[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [updating, setUpdating] = useState<string | null>(null);
+    const [rebindingUpdating, setRebindingUpdating] = useState(false);
+    const [searchValue, setSearchValue] = useState("");
+    const [filterValue, setFilterValue] = useState("all");
+    const [sortValue, setSortValue] = useState<ApiV1BlocklistsGetSortByEnum>(ApiV1BlocklistsGetSortByEnum.Updated);
+
+    // Get activeProfile from the store
+    const activeProfile = useAppStore((state) => state.activeProfile);
+    const setActiveProfile = useAppStore((state) => state.setActiveProfile);
+
+    // Get enabled blocklists from activeProfile
+    const enabledBlocklists: string[] =
+        activeProfile?.settings?.privacy?.blocklists ?? [];
+
+    useEffect(() => {
+        let isActive = true;
+        const fetchBlocklists = async () => {
+            setLoading(true);
+            try {
+                const resp = await api.Client.blocklistsApi.apiV1BlocklistsGet(sortValue);
+                if (!isActive) return;
+                setBlocklists(resp.data || []);
+            } catch (error: unknown) {
+                if (!isActive) return;
+                if (axios.isAxiosError(error) && error.response?.status === 429) {
+                    toast.error("Too many requests", {
+                        description: "Blocklists are temporarily unavailable. Please try again in a moment.",
+                    });
+                    setBlocklists([]);
+                } else {
+                    // For other errors, just set empty array (silent failure)
+                    setBlocklists([]);
+                }
+            } finally {
+                if (isActive) {
+                    setLoading(false);
+                }
+            }
+        };
+        fetchBlocklists();
+        return () => {
+            isActive = false;
+        };
+    }, [sortValue]);
+
+    // Handler to enable/disable all recommended blocklists in a category
+    const handleCategoryToggle = async (blocklistIds: string[], enable: boolean) => {
+        if (!activeProfile?.profile_id || blocklistIds.length === 0) return;
+        const idsToChange = enable
+            ? blocklistIds.filter((id) => !enabledBlocklists.includes(id))
+            : blocklistIds.filter((id) => enabledBlocklists.includes(id));
+        if (idsToChange.length === 0) return;
+        setUpdating("category");
+        try {
+            if (enable) {
+                await api.Client.profilesApi.apiV1ProfilesIdBlocklistsPost(
+                    activeProfile.profile_id,
+                    { blocklist_ids: idsToChange } as ApiBlocklistsUpdates
+                );
+            } else {
+                await api.Client.profilesApi.apiV1ProfilesIdBlocklistsDelete(
+                    activeProfile.profile_id,
+                    { blocklist_ids: idsToChange } as ApiBlocklistsUpdates
+                );
+            }
+            const updatedProfile = await api.Client.profilesApi.apiV1ProfilesIdGet(activeProfile.profile_id);
+            setActiveProfile(updatedProfile.data);
+            toast.success(enable ? "Category enabled" : "Category disabled", {
+                description: enable
+                    ? "Recommended blocklists have been enabled."
+                    : "Recommended blocklists have been disabled.",
+            });
+        } catch {
+            toast.error("Error", {
+                description: "Failed to update category. Please try again.",
+            });
+        } finally {
+            setUpdating(null);
+        }
+    };
+
+    // Handler to apply an exact target set in one action: enable some blocklists
+    // and disable others (used by the NRD range card to move between depths).
+    const handleApplyBlocklistSet = async (enableIds: string[], disableIds: string[]) => {
+        if (!activeProfile?.profile_id) return;
+        const toEnable = enableIds.filter((id) => !enabledBlocklists.includes(id));
+        const toDisable = disableIds.filter((id) => enabledBlocklists.includes(id));
+        if (toEnable.length === 0 && toDisable.length === 0) return;
+        setUpdating("nrd");
+        try {
+            if (toEnable.length > 0) {
+                await api.Client.profilesApi.apiV1ProfilesIdBlocklistsPost(
+                    activeProfile.profile_id,
+                    { blocklist_ids: toEnable } as ApiBlocklistsUpdates
+                );
+            }
+            if (toDisable.length > 0) {
+                await api.Client.profilesApi.apiV1ProfilesIdBlocklistsDelete(
+                    activeProfile.profile_id,
+                    { blocklist_ids: toDisable } as ApiBlocklistsUpdates
+                );
+            }
+            const updatedProfile = await api.Client.profilesApi.apiV1ProfilesIdGet(activeProfile.profile_id);
+            setActiveProfile(updatedProfile.data);
+            toast.success("Blocklists updated", {
+                description: "Your selection has been updated successfully.",
+            });
+        } catch {
+            toast.error("Error", {
+                description: "Failed to update blocklists. Please try again.",
+            });
+        } finally {
+            setUpdating(null);
+        }
+    };
+
+    // Handler to enable/disable a blocklist for the user
+    const handleBlocklistSwitch = async (blocklistId: string, checked: boolean) => {
+        if (!activeProfile?.profile_id) return;
+        setUpdating(blocklistId);
+        try {
+            let resp;
+            if (checked) {
+                resp = await api.Client.profilesApi.apiV1ProfilesIdBlocklistsPost(
+                    activeProfile.profile_id,
+                    { blocklist_ids: [blocklistId] } as ApiBlocklistsUpdates
+                );
+            } else {
+                resp = await api.Client.profilesApi.apiV1ProfilesIdBlocklistsDelete(
+                    activeProfile.profile_id,
+                    { blocklist_ids: [blocklistId] } as ApiBlocklistsUpdates
+                );
+            }
+            if (resp && resp.status === 200) {
+                const updatedProfile = await api.Client.profilesApi.apiV1ProfilesIdGet(activeProfile.profile_id);
+                setActiveProfile(updatedProfile.data);
+                toast.success(
+                    checked ? "Blocklist enabled" : "Blocklist disabled",
+                    {
+                        description: checked
+                            ? "Blocklist has been enabled successfully."
+                            : "Blocklist has been disabled successfully.",
+                    }
+                );
+            }
+        } catch {
+            toast.error("Error", {
+                description: "Failed to update blocklist. Please try again.",
+            });
+        } finally {
+            setUpdating(null);
+        }
+    };
+
+    // DNS rebinding protection — per-profile Security toggle stored in
+    // settings.security.rebinding_protection.enabled (default off).
+    const rebindingEnabled =
+        activeProfile?.settings?.security?.rebinding_protection?.enabled ?? false;
+
+    const handleRebindingToggle = async (enabled: boolean) => {
+        if (!activeProfile?.profile_id) return;
+        setRebindingUpdating(true);
+        try {
+            const resp = await api.Client.profilesApi.apiV1ProfilesIdPatch(
+                activeProfile.profile_id,
+                {
+                    updates: [
+                        {
+                            operation: ModelProfileUpdateOperationEnum.Replace,
+                            path: ModelProfileUpdatePathEnum.SettingsSecurityRebindingProtectionEnabled,
+                            value: enabled as unknown as object,
+                        },
+                    ],
+                }
+            );
+            if (resp && resp.status === 200) {
+                const updatedProfile = await api.Client.profilesApi.apiV1ProfilesIdGet(activeProfile.profile_id);
+                setActiveProfile(updatedProfile.data);
+                toast.success(
+                    enabled ? "DNS rebinding protection enabled" : "DNS rebinding protection disabled"
+                );
+            }
+        } catch {
+            toast.error("Error", {
+                description: "Failed to update DNS rebinding protection. Please try again.",
+            });
+        } finally {
+            setRebindingUpdating(false);
+        }
+    };
+
+    // Split blocklists by `kind`: general lists (Lists tab), security lists
+    // (Security tab) and content categories (Categories tab).
+    const regularBlocklists = blocklists.filter(
+        (bl) => bl.kind !== "category" && bl.kind !== "security"
+    );
+    const securityBlocklists = blocklists.filter((bl) => bl.kind === "security");
+    const categoryBlocklists = blocklists.filter((bl) => bl.kind === "category");
+
+    // Filter blocklists by search and filter value (basic, comprehensive, restrictive, all)
+    let filteredBlocklists = regularBlocklists.filter((blocklist) => {
+        const matchesSearch =
+            !searchValue.trim() ||
+            blocklist.name?.toLowerCase().includes(searchValue.toLowerCase()) ||
+            blocklist.description?.toLowerCase().includes(searchValue.toLowerCase());
+
+        let matchesFilter = true;
+        if (
+            filterValue !== "all" &&
+            filterValue !== "enabled" &&
+            filterValue !== "disabled"
+        ) {
+            // For predefined lists, match by intensity array
+            if (PREDEFINED_INTENSITY.has(filterValue)) {
+                const intensity = blocklist.intensity as unknown;
+                matchesFilter = Array.isArray(intensity) && intensity.includes(filterValue);
+            } else {
+                // For individual lists (hagezi, adguard, oisd), use exact match
+                matchesFilter = Array.isArray(blocklist.tags) && blocklist.tags.includes(filterValue);
+            }
+        } else if (filterValue === "enabled") {
+            matchesFilter = enabledBlocklists.includes(blocklist.blocklist_id);
+        } else if (filterValue === "disabled") {
+            matchesFilter = !enabledBlocklists.includes(blocklist.blocklist_id);
+        }
+
+        return matchesSearch && matchesFilter;
+    });
+
+    // Sort blocklists by last_modified (newest first) if "updated" is selected
+    if (sortValue === ApiV1BlocklistsGetSortByEnum.Updated) {
+        filteredBlocklists = filteredBlocklists.slice().sort((a, b) => {
+            const aTime = a.last_modified ? new Date(a.last_modified).getTime() : 0;
+            const bTime = b.last_modified ? new Date(b.last_modified).getTime() : 0;
+            return bTime - aTime;
+        });
+    }
+
+    // Toggle Listed Button: active if any filter is set (not "all") and there are filtered blocklists
+    const toggleListedActive =
+        filterValue !== "all" && filteredBlocklists.length > 0;
+
+    // When every filtered blocklist is already enabled the button acts as "disable all"
+    const allListedEnabled =
+        filteredBlocklists.length > 0 &&
+        filteredBlocklists.every((b) => enabledBlocklists.includes(b.blocklist_id));
+
+    // Handler to enable all filtered blocklists, or disable them all when
+    // every filtered blocklist is already enabled (select-all toggle semantics)
+    const handleToggleListed = async () => {
+        if (!activeProfile?.profile_id || !toggleListedActive) return;
+        setUpdating("all");
+        try {
+            if (allListedEnabled) {
+                await api.Client.profilesApi.apiV1ProfilesIdBlocklistsDelete(
+                    activeProfile.profile_id,
+                    { blocklist_ids: filteredBlocklists.map(b => b.blocklist_id) } as ApiBlocklistsUpdates
+                );
+            } else {
+                const toEnable = filteredBlocklists
+                    .map(b => b.blocklist_id)
+                    .filter(id => !enabledBlocklists.includes(id));
+                await api.Client.profilesApi.apiV1ProfilesIdBlocklistsPost(
+                    activeProfile.profile_id,
+                    { blocklist_ids: toEnable } as ApiBlocklistsUpdates
+                );
+            }
+            // Refetch profile after updating
+            const updatedProfile = await api.Client.profilesApi.apiV1ProfilesIdGet(activeProfile.profile_id);
+            setActiveProfile(updatedProfile.data);
+            toast.success(allListedEnabled ? "Blocklists disabled" : "Blocklists enabled", {
+                description: allListedEnabled
+                    ? "All filtered blocklists have been disabled successfully."
+                    : "All filtered blocklists have been enabled successfully.",
+            });
+        } catch {
+            toast.error("Error", {
+                description: "Failed to update blocklists. Please try again.",
+            });
+        } finally {
+            setUpdating(null);
+        }
+    };
+
+    const tabTriggerClassName =
+        "relative rounded-none border-t border-l border-r border-b-2 bg-transparent flex-1 sm:flex-none px-3 sm:px-10 md:px-16 lg:px-20 py-3 sm:py-2.5 md:py-3 " +
+        "text-[var(--tailwind-colors-slate-300)] " +
+        "border-transparent " +
+        "data-[state=active]:!bg-transparent dark:data-[state=active]:!bg-transparent " +
+        "data-[state=active]:shadow-none " +
+        "data-[state=active]:text-[var(--tailwind-colors-slate-50)] " +
+        "data-[state=active]:!border-t-[var(--tailwind-colors-slate-light-300)] data-[state=active]:!border-l-[var(--tailwind-colors-slate-light-300)] data-[state=active]:!border-r-[var(--tailwind-colors-slate-light-300)] " +
+        "dark:data-[state=active]:!border-t-[var(--tailwind-colors-slate-700)] dark:data-[state=active]:!border-l-[var(--tailwind-colors-slate-700)] dark:data-[state=active]:!border-r-[var(--tailwind-colors-slate-700)] " +
+        "data-[state=active]:!border-b-[var(--tailwind-colors-rdns-600)] " +
+        "hover:text-[var(--tailwind-colors-slate-50)] " +
+        "transition-colors duration-200 ease-out " +
+        // Hover underline effect using ::after pseudo-element
+        "after:absolute after:left-0 after:right-0 after:-bottom-[2px] after:h-[2px] after:rounded-full after:bg-[var(--tailwind-colors-rdns-600)] " +
+        "after:opacity-0 after:transition-opacity after:duration-200 after:ease-out " +
+        "hover:after:opacity-40 data-[state=active]:after:opacity-0";
+
+    return (
+        <div className="flex flex-col w-full items-start gap-6 p-6 md:p-8">
+            <BetaEndingBanner />
+            <LimitedAccessBanner />
+            <div title={isRestricted ? "Feature unavailable in limited access mode" : undefined} className={`w-full min-w-0${isRestricted ? ' cursor-not-allowed' : ''}`}>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className={`w-full${isRestricted ? ' opacity-50 pointer-events-none' : ''}`}>
+                <div className="w-full border-b border-[var(--tailwind-colors-slate-700)]">
+                    <TabsList className="flex h-auto w-full sm:w-fit bg-transparent rounded-none gap-0 justify-start p-0 border-b-0 sm:min-w-max">
+                        <TabsTrigger value="blocklists" className={tabTriggerClassName}>
+                            Lists
+                        </TabsTrigger>
+                        <TabsTrigger value="security" className={tabTriggerClassName}>
+                            Security
+                        </TabsTrigger>
+                        <TabsTrigger value="categories" className={tabTriggerClassName}>
+                            Categories
+                        </TabsTrigger>
+                        <TabsTrigger value="services" className={tabTriggerClassName}>
+                            Services
+                        </TabsTrigger>
+                    </TabsList>
+                </div>
+
+                <TabsContent value="blocklists" className="mt-4">
+                    <div className="flex flex-col w-full items-start gap-6">
+                        {/* Page Description */}
+                        <section className="w-full">
+                            <p className="text-[var(--tailwind-colors-slate-200)] text-base leading-6">
+                                Blocklists are collections of domains and IP addresses that help block trackers, ads, and malicious content. Enable general lists here and customise further with{" "}
+                                <a
+                                    role="link"
+                                    tabIndex={0}
+                                    className="!text-[var(--tailwind-colors-rdns-600)] underline cursor-pointer hover:!text-[var(--tailwind-colors-slate-50)] transition-colors"
+                                    onClick={() => setActiveTab("categories")}
+                                    onKeyDown={(e) => { if (e.key === "Enter") setActiveTab("categories"); }}
+                                >Categories</a>.
+                            </p>
+                        </section>
+
+                        {/* Alert Card */}
+                        {!blocklistsAlertDismissed && (
+                            <section className="w-full">
+                                <AlertCard
+                                    description={
+                                        <>
+                                            <div>
+                                                Enabling several large blocklists may degrade your browsing experience. Start with one of our predefined lists that fits your protection needs:
+                                                <span className="inline-flex flex-wrap gap-2 ml-1 align-baseline">
+                                                    <span
+                                                        className="underline cursor-pointer"
+                                                        onClick={() => setFilterValue("basic")}
+                                                    >
+                                                        Basic
+                                                    </span>
+                                                    <span
+                                                        className="underline cursor-pointer"
+                                                        onClick={() => setFilterValue("comprehensive")}
+                                                    >
+                                                        Comprehensive
+                                                    </span>
+                                                    <span
+                                                        className="underline cursor-pointer"
+                                                        onClick={() => setFilterValue("restrictive")}
+                                                    >
+                                                        Restrictive
+                                                    </span>
+                                                </span>
+                                            </div>
+                                        </>
+                                    }
+                                    onClose={() => setBlocklistsAlertDismissed(true)}
+                                    className="w-full"
+                                />
+                            </section>
+                        )}
+
+                        {/* Filters and Search (mobile-first layout similar to logs page) */}
+                        <section className="w-full flex flex-col gap-2.5">
+                            {/* Row 1: search + enable button (mobile). Desktop search handled in row 2 */}
+                            <div className="flex items-start gap-2 w-full md:hidden">
+                                <div className="relative flex-1 min-w-0">
+                                    <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--tailwind-colors-slate-400)]" />
+                                    <Input
+                                        className="h-11 min-h-11 pl-10 pr-3 py-2 !bg-[var(--shadcn-ui-app-background)] border-[var(--tailwind-colors-slate-700)] text-[var(--tailwind-colors-slate-200)] rounded-lg placeholder:text-[var(--tailwind-colors-slate-500)]"
+                                        placeholder="Search blocklists"
+                                        aria-label="Search blocklists"
+                                        value={searchValue}
+                                        onChange={e => setSearchValue(e.target.value)}
+                                        autoCapitalize="none"
+                                        spellCheck={false}
+                                        autoCorrect="off"
+                                    />
+                                </div>
+                                <div className="flex-shrink-0">
+                                    <ToggleListedButton
+                                        active={toggleListedActive}
+                                        disableMode={allListedEnabled}
+                                        updating={updating === "all"}
+                                        restricted={isRestricted}
+                                        onClick={handleToggleListed}
+                                        sizeClassName="w-11 h-11 min-h-11"
+                                    />
+                                </div>
+                            </div>
+                            {/* Row 2: horizontal scroll filters line (mobile) / single row on desktop.
+                                md:p-1/-m-1 keeps the 3px focus ring of the search input (and trailing
+                                icon button) inside the overflow-x-auto clip box without shifting layout. */}
+                            <div className="flex items-start gap-2 md:gap-3 w-full flex-wrap md:flex-nowrap overflow-visible md:overflow-x-auto no-scrollbar md:flex-row md:p-1 md:-m-1">
+                                {/* Desktop search (hidden on mobile second row) */}
+                                <div className="relative flex-1 min-w-0 hidden md:block">
+                                    <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--tailwind-colors-slate-400)]" />
+                                    <Input
+                                        className="h-9 pl-10 pr-3 py-2 !bg-[var(--shadcn-ui-app-background)] border-[var(--tailwind-colors-slate-700)] text-[var(--tailwind-colors-slate-200)] rounded-lg placeholder:text-[var(--tailwind-colors-slate-400)]"
+                                        placeholder="Search blocklists"
+                                        aria-label="Search blocklists"
+                                        value={searchValue}
+                                        onChange={e => setSearchValue(e.target.value)}
+                                        autoCapitalize="none"
+                                        spellCheck={false}
+                                        autoCorrect="off"
+                                    />
+                                </div>
+                                {/* List Filter */}
+                                <Select value={filterValue} onValueChange={setFilterValue}>
+                                    <SelectTrigger aria-label="Filter lists" className="h-11 md:h-9 min-h-11 md:min-h-0 flex-1 md:flex-none w-full md:w-auto md:min-w-[170px] md:max-w-xs px-2 md:px-3 !bg-[var(--shadcn-ui-app-background)] border-[var(--tailwind-colors-slate-700)] text-[var(--tailwind-colors-slate-50)] rounded-lg flex">
+                                        <div className="flex items-center gap-1 w-full min-w-0">
+                                            <ListFilterIcon className="h-4 w-4 shrink-0" />
+                                            <span className="text-sm truncate"><SelectValue placeholder="All lists" /></span>
+                                        </div>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All lists</SelectItem>
+                                        <div className="px-2 py-1 text-xs text-[var(--tailwind-colors-rdns-600)] font-semibold">Pre-defined lists</div>
+                                        {PREDEFINED_LISTS.map(({ label, tag }) => (
+                                            <SelectItem key={tag} value={tag}>{label}</SelectItem>
+                                        ))}
+                                        <div className="px-2 py-1 text-xs text-[var(--tailwind-colors-rdns-600)] font-semibold">Individual lists</div>
+                                        {INDIVIDUAL_LISTS.map(({ label, tag }) => (
+                                            <SelectItem key={tag} value={tag}>{label}</SelectItem>
+                                        ))}
+                                        <div className="px-2 py-1 text-xs text-[var(--tailwind-colors-rdns-600)] font-semibold">Status</div>
+                                        {STATUS_FILTERS.map(({ label, value }) => (
+                                            <SelectItem key={value} value={value}>{label}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {/* Sort By */}
+                                <Select value={sortValue} onValueChange={(value) => setSortValue(value as ApiV1BlocklistsGetSortByEnum)}>
+                                    <SelectTrigger aria-label="Sort blocklists" className="h-11 md:h-9 min-h-11 md:min-h-0 flex-1 md:flex-none w-full md:w-auto md:min-w-[180px] md:max-w-[240px] px-2 md:px-3 !bg-[var(--shadcn-ui-app-background)] border-[var(--tailwind-colors-slate-700)] text-[var(--tailwind-colors-slate-50)] rounded-lg flex">
+                                        <div className="flex items-center gap-1 w-full min-w-0">
+                                            <ArrowUpDown className="h-4 w-4 shrink-0" />
+                                            <span className="text-sm truncate"><SelectValue placeholder="Recently updated" /></span>
+                                        </div>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {SORT_OPTIONS.map(({ label, value }) => (
+                                            <SelectItem key={value} value={value}>
+                                                {label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {/* Toggle Listed Button (desktop only - mobile version is in row 1) */}
+                                <div className="flex-shrink-0 ml-auto hidden md:block">
+                                    <ToggleListedButton
+                                        active={toggleListedActive}
+                                        disableMode={allListedEnabled}
+                                        updating={updating === "all"}
+                                        restricted={isRestricted}
+                                        onClick={handleToggleListed}
+                                        sizeClassName="w-11 h-11 md:h-11 lg:h-9 min-h-11 md:min-h-11 lg:min-h-0"
+                                    />
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* Blocklist Cards */}
+                        <section className="w-full">
+                            {/*
+                             * On tablets the previous combination of parent h-full, flex-1 and nested ScrollArea with h-full
+                             * resulted in the ScrollArea viewport height being computed smaller than the content area created
+                             * by stacked fixed headers, preventing the overall document from scrolling to the very bottom.
+                             * We remove forced h-full and instead cap the ScrollArea only when there is sufficient vertical space.
+                             */}
+                            <ScrollArea className="w-full">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6 pb-8">
+                                    {loading ? (
+                                        <>
+                                            {Array.from({ length: 8 }).map((_, i) => (
+                                                <div key={i} className="rounded-lg border border-[var(--tailwind-colors-slate-700)] p-4 space-y-3">
+                                                    <div className="flex items-center justify-between">
+                                                        <Skeleton className="h-5 w-32" />
+                                                        <Skeleton className="h-5 w-10 rounded-full" />
+                                                    </div>
+                                                    <Skeleton className="h-4 w-full" />
+                                                    <Skeleton className="h-4 w-3/4" />
+                                                    <div className="flex items-center justify-between pt-2">
+                                                        <Skeleton className="h-3 w-20" />
+                                                        <Skeleton className="h-3 w-16" />
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </>
+                                    ) : filteredBlocklists.length === 0 ? (
+                                        <div className="col-span-full flex justify-center py-8">
+                                            <EmptyState searchTerm={searchValue.trim() || undefined} />
+                                        </div>
+                                    ) : (
+                                        filteredBlocklists.map((blocklist) => {
+                                            const blocklistId = blocklist.blocklist_id;
+                                            const isEnabled = enabledBlocklists.includes(blocklistId);
+                                            return (
+                                                <BlocklistCard
+                                                    key={blocklistId}
+                                                    title={blocklist.name}
+                                                    description={blocklist.description}
+                                                    entries={blocklist.entries}
+                                                    updated={formatUpdatedRelative(blocklist.last_modified)}
+                                                    onSwitchChange={(checked) => handleBlocklistSwitch(blocklistId, checked)}
+                                                    switchChecked={isEnabled}
+                                                    switchDisabled={updating === blocklistId || isRestricted}
+                                                    homepage={blocklist.homepage}
+                                                />
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </ScrollArea>
+                        </section>
+                    </div>
+                </TabsContent>
+
+                <TabsContent value="security" className="mt-4">
+                    {activeTab === "security" ? (
+                        <SecurityContentSection
+                            blocklists={securityBlocklists}
+                            enabledBlocklists={enabledBlocklists}
+                            onToggle={handleBlocklistSwitch}
+                            onApplySet={handleApplyBlocklistSet}
+                            updating={updating}
+                            loading={loading}
+                            restricted={isRestricted}
+                            rebindingEnabled={rebindingEnabled}
+                            onRebindingToggle={handleRebindingToggle}
+                            rebindingUpdating={rebindingUpdating}
+                        />
+                    ) : null}
+                </TabsContent>
+
+                <TabsContent value="services" className="mt-4">
+                    {activeTab === "services" ? <ServicesContentSection restricted={isRestricted} /> : null}
+                </TabsContent>
+
+                <TabsContent value="categories" className="mt-4">
+                    {activeTab === "categories" ? (
+                        <CategoriesContentSection
+                            blocklists={categoryBlocklists}
+                            enabledBlocklists={enabledBlocklists}
+                            onToggle={handleBlocklistSwitch}
+                            onCategoryToggle={handleCategoryToggle}
+                            updating={updating}
+                            loading={loading}
+                            restricted={isRestricted}
+                        />
+                    ) : null}
+                </TabsContent>
+            </Tabs>
+            </div>
+        </div>
+    );
+}

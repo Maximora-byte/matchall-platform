@@ -1,0 +1,58 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { type JSX, useState } from "react";
+import { useAppStore } from "@/store/general";
+import { useDnsConnectionStatus } from "@/hooks/useDnsConnectionStatus";
+import { useSubscriptionGuard } from "@/hooks/useSubscriptionGuard";
+
+export default function ConnectionStatusHeader(): JSX.Element | null {
+    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [isHiding, setIsHiding] = useState(false);
+    const setConnectionStatusVisible = useAppStore((state) => state.setConnectionStatusVisible);
+    // Belt-and-suspenders: App-level gating already skips rendering this
+    // component when the account is cut off (inactive / pending_delete), but if
+    // it ever does render the poll must not fire (DNS is stopped for cut-off
+    // accounts; the test would only ever fail).
+    const { isCutOff } = useSubscriptionGuard();
+
+    const { status } = useDnsConnectionStatus(5000, { enabled: !isCutOff });
+    const { badge, message, messageColor } = status;
+
+    if (isCollapsed || isCutOff) return null;
+
+    const handleHide = () => {
+        setIsHiding(true);
+        setTimeout(() => {
+            setIsCollapsed(true);
+            setConnectionStatusVisible(false);
+        }, 300);
+    };
+
+    return (
+        <div
+            data-testid="conn-header-root"
+            className={`flex h-12 items-center gap-2.5 px-4 sm:px-6 lg:px-8 py-3 bg-[var(--shadcn-ui-app-background)] w-full transition-all duration-300 ease-in-out overflow-hidden border-b border-[var(--tailwind-colors-slate-800)] ${isHiding ? 'opacity-0 -translate-y-full max-h-0' : 'opacity-100 translate-y-0 max-h-12'}`}
+        >
+            <div data-testid="conn-header-label" className="font-bold text-[var(--tailwind-colors-slate-50)] text-xs leading-3 whitespace-nowrap font-['Roboto_Mono-Bold',Helvetica]">
+                Status
+            </div>
+            <Badge data-testid="conn-header-badge" className={`${badge.className} text-white px-2.5 py-0.5 rounded`}>
+                <span data-testid="conn-header-badge-text" className="font-text-xs-leading-4-semibold text-xs font-semibold whitespace-nowrap">{badge.text}</span>
+            </Badge>
+            <Separator data-testid="conn-header-separator" orientation="vertical" className="h-5" />
+            <div data-testid="conn-header-message" className={`font-normal ${messageColor} text-xs leading-6 whitespace-nowrap font-['Roboto_Flex-Regular',Helvetica]`}>{message}</div>
+            <div className="flex-1" />
+            <Button
+                variant="ghost"
+                className="h-auto min-w-0 px-2.5 py-1.5 mt-[-4px] mb-[-4px] rounded-[6px] cursor-pointer hover:bg-[var(--tailwind-colors-rdns-alpha-900)] transition-colors duration-200 text-[var(--tailwind-colors-rdns-600)] focus-visible:ring-2 focus-visible:ring-[var(--tailwind-colors-rdns-600)] focus-visible:ring-offset-0"
+                onClick={handleHide}
+                aria-label="Hide connection status bar"
+            >
+                <span className="flex items-center text-xs leading-5 font-medium">
+                    <span data-testid="conn-header-hide">Hide</span>
+                </span>
+            </Button>
+        </div>
+    );
+}

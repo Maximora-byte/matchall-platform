@@ -1,0 +1,68 @@
+---
+import MainGridLayout from "@layouts/MainGridLayout.astro";
+import { getCollection } from "astro:content";
+import { Icon } from "astro-icon/components";
+
+const order = [
+	"getting-started",
+	"account-security",
+	"drive-guide",
+	"network-guide",
+	"mirrors-user",
+	"mirrors-developer",
+	"notification-delivery",
+	"troubleshooting",
+];
+const entries = await getCollection("docs");
+const docs = entries.sort((a, b) => order.indexOf(a.slug) - order.indexOf(b.slug));
+const groups = [
+	{ title: "开始使用", description: "先完成账户与基础安全设置。", slugs: ["getting-started", "account-security"] },
+	{ title: "核心服务", description: "配置文件同步、网络连接和通知。", slugs: ["drive-guide", "network-guide", "notification-delivery"] },
+	{ title: "软件分发", description: "下载、校验、授权与开发者发布。", slugs: ["mirrors-user", "mirrors-developer"] },
+	{ title: "获得帮助", description: "按正确顺序定位常见问题。", slugs: ["troubleshooting"] },
+];
+---
+
+<MainGridLayout title="MatchAll 文档" description="账户、安全、同步、网络与软件分发使用指南。">
+	<section class="card-base rounded-[var(--radius-large)] px-6 py-7 md:px-9 md:py-9" data-pagefind-body>
+		<p class="text-sm font-bold tracking-[0.18em] text-[var(--primary)]">MATCHALL DOCS</p>
+		<h1 data-pagefind-meta="title" class="mt-2 text-3xl md:text-4xl font-bold text-black/90 dark:text-white/90">文档中心</h1>
+		<p class="mt-3 max-w-2xl text-black/60 dark:text-white/60">从统一账户开始，了解 Drive、Network、Mirrors 与通知服务。8 篇指南均包含操作步骤、安全提示和故障排查，并纳入全站搜索。</p>
+
+		<a href="/docs/getting-started/" class="mt-7 flex items-center justify-between gap-4 rounded-2xl border border-[var(--primary)]/25 bg-[var(--primary)]/[0.08] p-5 transition hover:border-[var(--primary)]/60">
+			<div><span class="text-xs font-bold tracking-[0.16em] text-[var(--primary)]">推荐起点 · 约 3 分钟</span><h2 class="mt-1 text-xl font-bold">第一次使用 MatchAll？</h2><p class="mt-1 text-sm text-black/55 dark:text-white/55">从邀请注册、统一登录和第一次服务检查开始。</p></div>
+			<Icon name="material-symbols:arrow-forward-rounded" class="shrink-0 text-2xl text-[var(--primary)]" />
+		</a>
+
+		<label class="mt-7 block" for="docs-filter"><span class="sr-only">筛选文档</span><div class="flex items-center gap-3 rounded-2xl border border-black/10 bg-black/[0.025] px-4 dark:border-white/10 dark:bg-white/[0.035]"><Icon name="material-symbols:search-rounded" class="text-xl text-black/40 dark:text-white/40" /><input id="docs-filter" type="search" placeholder="按标题或内容筛选文档…" class="min-w-0 flex-1 bg-transparent py-3.5 outline-none placeholder:text-black/35 dark:placeholder:text-white/35" /></div></label>
+
+		<div id="docs-groups" class="mt-8 space-y-9">
+			{groups.map((group) => (
+				<section class="docs-group" data-group={group.title}>
+					<div><h2 class="text-xl font-bold text-black/85 dark:text-white/85">{group.title}</h2><p class="mt-1 text-sm text-black/50 dark:text-white/50">{group.description}</p></div>
+					<div class="mt-4 grid gap-4 sm:grid-cols-2">
+						{group.slugs.map((slug) => docs.find((entry) => entry.slug === slug)).filter(Boolean).map((entry) => entry && (
+							<a href={`/docs/${entry.slug}/`} data-doc-card data-search={`${entry.data.title} ${entry.data.description}`} class="group rounded-2xl border border-black/10 dark:border-white/10 bg-black/[0.025] dark:bg-white/[0.035] p-5 transition hover:-translate-y-0.5 hover:border-[var(--primary)]/50">
+								<div class="flex items-start justify-between gap-4"><div><h3 class="font-bold text-lg text-black/85 dark:text-white/85">{entry.data.title}</h3><p class="mt-2 text-sm leading-6 text-black/55 dark:text-white/55">{entry.data.description}</p></div><Icon name="material-symbols:arrow-forward-rounded" class="mt-1 shrink-0 text-xl text-[var(--primary)] transition group-hover:translate-x-1" /></div>
+							</a>
+						))}
+					</div>
+				</section>
+			))}
+		</div>
+		<p id="docs-empty" hidden class="mt-8 rounded-2xl border border-dashed border-black/15 p-6 text-center text-black/50 dark:border-white/15 dark:text-white/50">没有匹配的文档。可尝试“登录”“同步”“下载”或“通知”。</p>
+	</section>
+	<script>
+		const input = document.querySelector<HTMLInputElement>("#docs-filter");
+		const cards = [...document.querySelectorAll<HTMLElement>("[data-doc-card]")];
+		const groups = [...document.querySelectorAll<HTMLElement>(".docs-group")];
+		const empty = document.querySelector<HTMLElement>("#docs-empty");
+		input?.addEventListener("input", () => {
+			const query = input.value.trim().toLocaleLowerCase("zh-CN");
+			let visible = 0;
+			for (const card of cards) { const show = !query || (card.dataset.search || "").toLocaleLowerCase("zh-CN").includes(query); card.hidden = !show; if (show) visible += 1; }
+			for (const group of groups) group.hidden = !group.querySelector("[data-doc-card]:not([hidden])");
+			if (empty) empty.hidden = visible !== 0;
+		});
+	</script>
+</MainGridLayout>

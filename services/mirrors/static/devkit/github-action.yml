@@ -1,0 +1,18 @@
+name: Publish to MatchAll Mirrors
+on: {workflow_dispatch: {}}
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload release draft
+        env:
+          MATCHALL_MIRRORS_TOKEN: ${{ secrets.MATCHALL_MIRRORS_TOKEN }}
+          MATCHALL_PROJECT: your-project
+          MATCHALL_VERSION: ${{ github.ref_name }}
+          MATCHALL_ARTIFACT: dist/app.zip
+          MATCHALL_ROLLOUT: "10"
+        run: |
+          curl -fsS https://mirrors.maximoraverse.org/static/devkit/publish.py -o /tmp/matchall-publish.py
+          echo "bcb2805c465eaa4fe15fb4466cce0a4fc293a7bb56abba9c4f7709e5868f40bf  /tmp/matchall-publish.py" | sha256sum -c -
+          python3 /tmp/matchall-publish.py

@@ -1,0 +1,894 @@
+import React, { type JSX, useState, useRef, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { ArrowLeft, Check, ChevronDown, Clipboard } from "lucide-react";
+import { toast } from "sonner";
+import modDNSLogoDarkTheme from '@/assets/logos/modDNS-dark-theme.svg';
+import modDNSLogoLightTheme from '@/assets/logos/modDNS-light-theme.svg';
+import { useTheme } from "@/components/theme-provider";
+import AuthFooter from "@/components/auth/AuthFooter";
+import { parseDnsServerLocations, firstAddress } from "@/lib/dnsServerLocations";
+import { LINKS } from "@/pages/landing/links";
+
+interface FAQItemProps {
+    question: string;
+    answer: string | JSX.Element;
+    globalToggleSignal?: number; // Used to trigger expand/collapse from parent
+    globalToggleState?: boolean; // What state to set when signal changes
+}
+
+function FAQItem({ question, answer, globalToggleSignal, globalToggleState }: FAQItemProps) {
+    const [isExpanded, setIsExpanded] = useState(false);
+    const [height, setHeight] = useState<string>('0px');
+    const contentRef = useRef<HTMLDivElement>(null);
+    const [lastSignal, setLastSignal] = useState(0);
+
+    // React to global toggle signals
+    useEffect(() => {
+        if (globalToggleSignal && globalToggleSignal !== lastSignal) {
+            setIsExpanded(globalToggleState || false);
+            setLastSignal(globalToggleSignal);
+        }
+    }, [globalToggleSignal, globalToggleState, lastSignal]);
+
+    useEffect(() => {
+        const el = contentRef.current;
+        if (!el) return;
+        // Measure the inner content, not the wrapper: the wrapper's scrollHeight
+        // never drops below its own explicit height, so it cannot shrink.
+        const inner = (el.firstElementChild as HTMLElement | null) ?? el;
+        setHeight(isExpanded ? `${inner.offsetHeight}px` : '0px');
+        if (!isExpanded || typeof ResizeObserver === 'undefined') return;
+        // The answer reflows when the viewport crosses a breakpoint; keep the
+        // clipped wrapper in step with the content's real height while open.
+        const observer = new ResizeObserver(() => setHeight(`${inner.offsetHeight}px`));
+        observer.observe(inner);
+        return () => observer.disconnect();
+    }, [isExpanded]);
+
+    const handleToggle = () => {
+        setIsExpanded(!isExpanded);
+    };
+
+    return (
+        <div className="mb-4 border border-[var(--tailwind-colors-slate-light-300)] dark:border-transparent rounded-lg overflow-hidden bg-transparent dark:bg-[var(--variable-collection-surface)]">
+            <button
+                className="w-full p-4 text-left hover:bg-[var(--shadcn-ui-app-muted)] transition-colors duration-200 flex items-center justify-between"
+                onClick={handleToggle}
+            >
+                <h3 className="text-xl font-semibold text-[var(--shadcn-ui-app-foreground)] pr-4">
+                    {question}
+                </h3>
+                <span className="ml-2 flex-shrink-0">
+                    <ChevronDown
+                        className={`h-5 w-5 text-[var(--shadcn-ui-app-muted-foreground)] transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                    />
+                </span>
+            </button>
+            <div
+                ref={contentRef}
+                style={{ height }}
+                className="relative overflow-hidden transition-all duration-300 ease-in-out"
+            >
+                <div className="p-4 pt-0 text-[var(--shadcn-ui-app-foreground)] leading-relaxed">
+                    {typeof answer === 'string' ? (
+                        <p>{answer}</p>
+                    ) : (
+                        answer
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+interface FAQSectionProps {
+    title: string;
+    children: React.ReactNode;
+    globalToggleSignal?: number;
+    globalToggleState?: boolean;
+}
+
+function FAQSection({ title, children, globalToggleSignal, globalToggleState }: FAQSectionProps) {
+    const enhancedChildren = React.Children.map(children, (child) => {
+        if (React.isValidElement(child) && child.type === FAQItem) {
+            return React.cloneElement(child as React.ReactElement<FAQItemProps>, {
+                globalToggleSignal,
+                globalToggleState,
+            });
+        }
+        return child;
+    });
+
+    return (
+        <div className="mb-8">
+            <h2 className="text-2xl font-bold text-[var(--shadcn-ui-app-foreground)] mb-6 border-b border-[var(--shadcn-ui-app-border)] pb-2">
+                {title}
+            </h2>
+            {enhancedChildren}
+        </div>
+    );
+}
+
+const FAQ_LAST_UPDATED = 'September 9, 2026';
+
+const CODE_CLASS = "text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]";
+const TABLE_CELL_CLASS = "border border-[var(--shadcn-ui-app-border)] px-3 py-2 text-left align-top";
+const TERM_CLASS = "block text-xs uppercase tracking-wide text-[var(--shadcn-ui-app-muted-foreground)]";
+const VALUE_CLASS = "block min-w-0 break-all font-mono";
+
+interface CopyRowProps {
+    label: string;
+    value: string;
+}
+
+/** Tap-to-copy label/value row for the narrow-screen server cards (mirrors the setup page rows). */
+function CopyRow({ label, value }: CopyRowProps) {
+    const [copied, setCopied] = useState(false);
+
+    useEffect(() => {
+        if (!copied) return;
+        const timer = setTimeout(() => setCopied(false), 1600);
+        return () => clearTimeout(timer);
+    }, [copied]);
+
+    const handleCopy = async () => {
+        try {
+            await navigator.clipboard.writeText(value);
+            setCopied(true);
+            toast.success(`${label} copied to clipboard`);
+        } catch {
+            toast.error('Copy failed');
+        }
+    };
+
+    return (
+        <button
+            type="button"
+            onClick={handleCopy}
+            className="block w-full min-h-10 rounded-md px-2 py-1 -mx-2 text-left active:bg-[var(--shadcn-ui-app-muted)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+            <span className="sr-only">Copy </span>
+            <span className="flex items-center justify-between gap-3">
+                <span className={TERM_CLASS}>{label}</span>
+                {copied
+                    ? <Check className="h-4 w-4 shrink-0 text-[var(--tailwind-colors-rdns-600)]" aria-hidden="true" />
+                    : <Clipboard className="h-4 w-4 shrink-0 text-[var(--tailwind-colors-rdns-600)]" aria-hidden="true" />}
+            </span>
+            <span className={VALUE_CLASS}>{value}</span>
+        </button>
+    );
+}
+
+export default function FAQ(): JSX.Element {
+    const navigate = useNavigate();
+    const location = useLocation();
+    const hasHistory = location.key !== "default";
+    const [toggleSignal, setToggleSignal] = useState(0);
+    const [toggleState, setToggleState] = useState(false);
+    const { theme } = useTheme();
+    const isDarkMode = theme === 'dark' || (theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+    const toggleAllFAQs = () => {
+        setToggleState(!toggleState);
+        setToggleSignal(prev => prev + 1);
+    };
+
+    const supportedProtocols = (
+        <ul className="list-disc pl-5 space-y-1">
+            <li>DNS-over-HTTPS (DoH) - Port 443</li>
+            <li>DNS-over-TLS (DoT) - Port 853</li>
+            <li>DNS-over-QUIC (DoQ) - Port 853</li>
+        </ul>
+    );
+
+    const howToCreateProfile = (
+        <ol className="list-decimal pl-5 space-y-1">
+            <li>At the top-right of the page, click the current profile button</li>
+            <li>Click the '+ Create profile' button</li>
+            <li>Give the profile a name, and click the 'Create profile' button</li>
+        </ol>
+    );
+
+    const howToRenameProfile = (
+        <ol className="list-decimal pl-5 space-y-1">
+            <li>At the top-right of the page, click the current profile button</li>
+            <li>Click to select the profile to rename</li>
+            <li>Click the gear icon to the right of the profile name</li>
+            <li>After entering a new name, the 'Save' button appears</li>
+            <li>Click 'Save', and a confirmation appears at the bottom of the page</li>
+        </ol>
+    );
+
+    const howToDeleteProfile = (
+        <ol className="list-decimal pl-5 space-y-1">
+            <li>At the top-right of the page, click the current profile button</li>
+            <li>Click to select the profile to delete</li>
+            <li>Click the gear icon to the right of the profile name</li>
+            <li><strong>Important:</strong> This confirmation step is permanent, and the profile, associated logs, and settings cannot be restored</li>
+        </ol>
+    );
+
+    const blocklistsInstructions = (
+        <ol className="list-decimal pl-5 space-y-1">
+            <li>Go to modDNS dashboard</li>
+            <li>Navigate to Blocklists</li>
+            <li>Enable or disable blocklists individually, or choose Enable listed after filtering lists</li>
+            <li>Changes take effect immediately - note that your local DNS cache may still hold old records for some time</li>
+        </ol>
+    );
+
+    const howToBlockAllQueries = (
+        <ol className="list-decimal pl-5 space-y-1">
+            <li>Click the 'Settings' tab on the left side of the page</li>
+            <li>Under 'BLOCKLISTS', toggle the 'Default rule' from Allow to Block</li>
+        </ol>
+    );
+
+    const howToAddCustomRule = (
+        <div className="space-y-2">
+            <p>Click the 'Custom Rules' tab on the left side of the page. Two tabs are available:</p>
+            <ul className="list-disc pl-5 space-y-1">
+                <li><strong>Denylist entries</strong> help block specific domains, IP addresses, or ASNs not covered by blocklists</li>
+                <li><strong>Allowlist</strong> specifies domains, IP addresses, or ASNs that should be allowed even if they appear on active blocklists</li>
+            </ul>
+            <p>Enter a domain, IP address, or ASN in the text entry field (for example <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">AS15169</code>), then click the green '+ Add' button.</p>
+        </div>
+    );
+
+    const customRulesSubdomainsInfo = (
+        <div className="space-y-2">
+            <p>By default, when you add a plain domain like <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">facebook.com</code> to your denylist or allowlist, it is automatically stored as <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">*.facebook.com</code>, meaning the rule applies to the domain and all its subdomains (e.g. <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">www.facebook.com</code>, <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">m.facebook.com</code>).</p>
+            <p>This behavior is controlled by the <strong>'Subdomains in custom rules'</strong> setting under 'Settings' &gt; 'CUSTOM RULES':</p>
+            <ul className="list-disc pl-5 space-y-1">
+                <li><strong>Include</strong> (default): Plain domains are automatically expanded to include subdomains (<code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">facebook.com</code> → <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">*.facebook.com</code>)</li>
+                <li><strong>Exact</strong>: Domains are stored exactly as entered. To include subdomains, you must explicitly use a wildcard (<code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">*.facebook.com</code>)</li>
+            </ul>
+            <p>This setting only affects new rules. Existing rules are not changed when you toggle the setting. IP addresses and ASNs are not affected by this setting.</p>
+        </div >
+    );
+
+    const customRulesSupportedInputs = (
+        <div className="space-y-2">
+            <p>Custom Rules support three types of entries:</p>
+            <ul className="list-disc pl-5 space-y-1">
+                <li><strong>Domains</strong> (including wildcards, like <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">*.example.com</code>)</li>
+                <li><strong>IP addresses</strong> (single IPv4/IPv6 addresses)</li>
+                <li><strong>ASNs</strong> (for example <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">AS15169</code> or <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">15169</code>)</li>
+            </ul>
+            <p>ASN rules are applied to the resolved IP address (after DNS resolution), not the domain string itself.</p>
+        </div >
+    );
+
+    const servicesBlockingInfo = (
+        <div className="space-y-2">
+            <p>The Services tab lets you block large services (for example a major platform or CDN) using a curated catalog.</p>
+            <p>When you enable blocking for a service, modDNS can block:</p>
+            <ul className="list-disc pl-5 space-y-1">
+                <li><strong>Known domains</strong> associated with the service</li>
+                <li><strong>Traffic routed via the service</strong>, based on the service's IP network ownership (ASN) when available</li>
+            </ul>
+            <p>If blocking a service causes issues, you can add specific domains, IP addresses, or ASNs to your allowlist to override blocks.</p>
+        </div>
+    );
+
+    const rulePrecedenceInfo = (
+        <div className="space-y-2">
+            <p>When multiple rules could apply, modDNS uses a simple precedence model:</p>
+            <ul className="list-disc pl-5 space-y-1">
+                <li><strong>Allowlist wins over blocking.</strong> If an allowlist entry matches, the request is allowed even if it would otherwise be blocked.</li>
+                <li><strong>Otherwise, blocking applies.</strong> If there is no allow match but a denylist/service/blocklist match exists, the request is blocked.</li>
+                <li><strong>Otherwise, the default rule applies</strong> (your profile's Default rule setting).</li>
+            </ul>
+            <p>This applies consistently whether the match comes from domains, IP addresses, or ASNs.</p>
+        </div >
+    );
+
+    const wildcardRules = (
+        <div className="space-y-2">
+            <p><code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">*.ads-example.com</code> or <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">.ads-example.com</code> matches <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">ads-example.com</code> plus any subdomain, such as <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">ads1.ads-example.com</code> and <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">ads2.ads-example.com</code>.</p>
+            <p><code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">ads.*</code> matches any domain starting with that label (for example <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">ads.com</code>, <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">ads.co.uk</code>, <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">ads.us</code>), but does not match subdomains such as <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">www.ads.com</code>.</p>
+            <p><code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">*ads*</code> matches any domain that contains that fragment anywhere, including <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">ads.com</code>, <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">www.ads.com</code>, <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">exampleads.com</code>, and <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">cdn.exampleads.net</code>.</p>
+            <p>There are two separate subdomain settings in 'Settings':</p>
+            <ul className="list-disc pl-5 space-y-1">
+                <li><strong>'BLOCKLISTS' &gt; 'Subdomains in blocklists'</strong> (default: Block) controls whether subdomains of domains on enabled blocklists are also blocked. For example, if a blocklist contains <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">ads-example.com</code>, this setting determines whether <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">ads1.ads-example.com</code> is also blocked.</li>
+                <li><strong>'CUSTOM RULES' &gt; 'Subdomains in custom rules'</strong> (default: Include) controls whether new custom rules automatically include subdomains. When set to Include, adding <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">example.com</code> is stored as <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">*.example.com</code>, matching the domain and all its subdomains. When set to Exact, the rule matches only the exact domain entered.</li>
+            </ul>
+            <p>You can always use explicit wildcards (e.g. <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">*.example.com</code>) regardless of the setting.</p>
+        </div>
+    );
+
+    const dotRules = (
+        <ul className="list-disc pl-5 space-y-1">
+            <li>A leading dot is treated the same as a prefix wildcard (for example <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">.ads-example.com</code> matches like <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">*.ads-example.com</code>)</li>
+            <li>A trailing dot is stripped and ignored</li>
+        </ul>
+    );
+
+    const ipAddressRules = (
+        <div className="space-y-2">
+            <p>When a domain resolves to many IP addresses, add one IP address associated with the domain, and access will be blocked.</p>
+            <p>IP address ranges are not supported. Using a dash/hyphen/- between two IP addresses is not supported. CIDR notation is not supported.</p>
+            <p>Wildcards (*) are not supported for IP addresses at the moment.</p>
+        </div>
+    );
+
+    const howToCheckIfModDNSIsWorking = (
+        <ol className="list-decimal pl-5 space-y-1">
+            <li>View the connection status displayed in the header of the modDNS web application</li>
+            <li>Visit a known ad-heavy website and see if ads are blocked</li>
+            <li>Check your Query Logs for recent activity</li>
+            <li>Use <a href="https://www.dnsleaktest.com" target="_blank" rel="noopener noreferrer"><code className="text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">dnsleaktest.com</code></a> to verify you're using modDNS servers</li>
+            <li>Try accessing a test domain that should be blocked</li>
+        </ol>
+    );
+
+    const whyWebsitesAreNotWorking = (
+        <div className="space-y-2">
+            <p>This usually means a domain is being blocked by your enabled blocklists:</p>
+            <ol className="list-decimal pl-5 space-y-1">
+                <li>Check your Query Logs to see what's being blocked</li>
+                <li>Add specific domains to your allowlist via Custom Rules</li>
+                <li>Try disabling aggressive blocklists temporarily</li>
+                <li>Contact support if issues persist</li>
+            </ol>
+        </div>
+    );
+
+    const dnsEnv = (import.meta as ImportMeta).env;
+    const dnsDomain = dnsEnv.VITE_DNS_SERVER_DOMAIN || 'dns.moddns.net';
+    const serverLocations = parseDnsServerLocations(dnsEnv.VITE_DNS_SERVER_LOCATIONS, dnsDomain);
+    const anycastRow = {
+        city: 'Anycast (default)',
+        hostname: dnsDomain,
+        ipv4: firstAddress(dnsEnv.VITE_DNS_SERVER_IP_ADDRESSES),
+        ipv6: firstAddress(dnsEnv.VITE_DNS_SERVER_IPV6_ADDRESSES),
+    };
+    const serverRows = [anycastRow, ...serverLocations];
+    const showIpv6Column = serverRows.some(row => row.ipv6);
+
+    const canIChooseServer = (
+        <div className="space-y-2">
+            <p>By default, modDNS uses anycast routing to automatically direct your queries to the nearest server. In most cases, this gives you the lowest latency and automatic failover without any configuration.</p>
+            <p>Each server location also has a location-specific hostname and its own IP addresses that can be used directly if you want to pin your queries to a specific server. This can help if queries are slow or time out with the default anycast setup, for example when you connect through a VPN server in another region and anycast routes you to a distant location.</p>
+            <p>Note: if you opt to use a specific endpoint directly, in case of maintenance of the server resolutions will stop. Unless you have a very good reason to pick this option, we recommend going with the default anycast setup.</p>
+            {serverLocations.length > 0 && (
+                <div className="space-y-2">
+                    <p>Currently available locations:</p>
+                    <ul className="lg:hidden space-y-2">
+                        {serverRows.map(row => (
+                            <li key={row.hostname} className="rounded-md border border-[var(--shadcn-ui-app-border)] p-3 text-sm">
+                                <p className="font-medium">{row.city}</p>
+                                <div className="mt-1 space-y-0.5">
+                                    <CopyRow label="Hostname" value={row.hostname} />
+                                    {row.ipv4 && <CopyRow label="IPv4" value={row.ipv4} />}
+                                    {row.ipv6 && <CopyRow label="IPv6" value={row.ipv6} />}
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                    <div className="hidden lg:block overflow-x-auto">
+                        <table className="w-full border-collapse text-sm">
+                            <thead>
+                                <tr>
+                                    <th className={TABLE_CELL_CLASS}>Location</th>
+                                    <th className={TABLE_CELL_CLASS}>Hostname</th>
+                                    <th className={TABLE_CELL_CLASS}>IPv4</th>
+                                    {showIpv6Column && <th className={TABLE_CELL_CLASS}>IPv6</th>}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {serverRows.map(row => (
+                                    <tr key={row.hostname}>
+                                        <td className={`${TABLE_CELL_CLASS} whitespace-nowrap`}>{row.city}</td>
+                                        <td className={`${TABLE_CELL_CLASS} font-mono whitespace-nowrap`}>{row.hostname}</td>
+                                        <td className={`${TABLE_CELL_CLASS} font-mono whitespace-nowrap`}>{row.ipv4 ?? '—'}</td>
+                                        {showIpv6Column && <td className={`${TABLE_CELL_CLASS} font-mono whitespace-nowrap`}>{row.ipv6 ?? '—'}</td>}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    <p>To use a location-specific endpoint, prepend your Profile ID to the server hostname. For example, if your Profile ID is <code className={CODE_CLASS}>abc123</code> and you want to use the {serverLocations[0]?.city} server, configure your DNS-over-TLS/QUIC hostname as <code className={CODE_CLASS}>abc123.{serverLocations[0]?.hostname}</code>.</p>
+                    <p>Some clients (Apple configuration profiles, routers, systemd-resolved, stubby) also ask for the server's IP address alongside the hostname. In that case use the IPv4 or IPv6 address listed for the <strong>same location</strong>. If you enter the anycast address there, your queries are still routed by anycast regardless of the hostname.</p>
+                </div>
+            )}
+            <p>Your filtering settings, blocklists, and custom rules are synchronized across all servers, so your experience is identical regardless of which server handles your query.</p>
+        </div>
+    );
+
+    const howToGetModDNS = (
+        <div className="space-y-2">
+            <p>modDNS is included in the IVPN Plus and IVPN Pro Suite plans. There is no standalone modDNS subscription, and it is not part of the IVPN Standard plan. See <a href={LINKS.pricing} target="_blank" rel="noopener noreferrer" className="underline text-[var(--tailwind-colors-rdns-600)] hover:text-[var(--tailwind-colors-rdns-700)]">ivpn.net/pricing</a> for current plans.</p>
+            <p>Once you have an eligible IVPN plan, start modDNS from your IVPN account area. IVPN sends you to a one-time signup link where you create your modDNS login with an email and password or a passkey. Your modDNS access then follows your IVPN subscription automatically.</p>
+        </div>
+    );
+
+    const qnameMinimisation = (
+        <div className="space-y-2">
+            <p>Yes. When a resolver looks up a name, it walks the DNS hierarchy from the root servers down. Without QNAME minimisation it repeats the full name (for example <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">mail.example.com</code>) to every server on that path, so the root and top-level-domain servers learn which hosts you visit. With QNAME minimisation (RFC 9156) each server is asked only for the part it is responsible for.</p>
+            <p>modDNS applies this on every resolver location and for every profile. It is always on and there is no setting that disables it.</p>
+        </div>
+    );
+
+    const ednsClientSubnet = (
+        <div className="space-y-2">
+            <p>No. EDNS Client Subnet (ECS, RFC 7871) is a mechanism by which a resolver attaches part of your IP address to the queries it sends to authoritative DNS servers, mainly so that content delivery networks can pick a server near you. It also reveals your approximate network location to every authoritative server involved in a lookup.</p>
+            <p>modDNS does not use ECS. Your address is never attached to upstream queries, and if your device adds an ECS option to its own queries it is discarded before the lookup leaves our resolver. Authoritative servers only see the address of the modDNS server location that handled your query. There is no setting to turn ECS on.</p>
+        </div>
+    );
+
+    const whatIsDNSSEC = (
+        <div className="space-y-2">
+            <p>DNSSEC stands for Domain Name System Security Extensions. It's a security protocol that adds digital signatures to DNS records to ensure their authenticity and integrity. This helps prevent DNS spoofing attacks, where malicious actors could redirect users to fake websites.</p>
+            <p>DNSSEC works by verifying that the DNS records have not been altered during transmission and that they come from a legitimate source. It's particularly important for securing domain names and ensuring that users reach the correct websites when they type URLs into their browsers.</p>
+        </div>
+    );
+
+    const whatIsDNSSECDOBit = (
+        <div className="space-y-2">
+            <p>The DNSSEC OK (DO) bit, also known as the DNSSEC OK flag, is a flag in the DNS header that indicates whether the DNS client supports DNSSEC validation. When this bit is set to 1, it signals to the DNS resolver that the client wants the resolver to perform DNSSEC validation on the responses it provides.</p>
+            <p>This allows the client to request signed DNS records and verify their authenticity. The DO bit was introduced to enable DNSSEC support in a backward-compatible manner, ensuring that clients and resolvers that do not support DNSSEC can still communicate with those that do.</p>
+            <p>In modDNS, the DO bit is disabled by default to ensure compatibility with devices using systemd-resolved. DNSSEC validation is still performed automatically, even when the DO bit is not set.</p>
+        </div>
+    );
+
+    const howToEnable2FA = (
+        <ol className="list-decimal pl-5 space-y-1">
+            <li>Go to Account Settings</li>
+            <li>Enable TOTP (Time-based One-Time Password)</li>
+            <li>Scan the QR code with an authenticator app</li>
+            <li>Enter the verification code to confirm</li>
+            <li>Save your backup codes securely</li>
+        </ol>
+    );
+
+    const sessionManagement = (
+        <div className="space-y-2">
+            <p>Logging into the account via the website creates a session. You can log out using any of these methods:</p>
+            <ul className="list-disc pl-5 space-y-1">
+                <li><strong>Navigation logout:</strong> Click the 'Log out' button in the left sidebar navigation menu</li>
+                <li><strong>Header logout:</strong> When on the Account preferences page, click the 'Logout' button in the top header</li>
+                <li><strong>Log out other sessions:</strong> In Account preferences, use 'Log out other web sessions' to log out all sessions except your current one - keeping you logged in while securing other devices</li>
+            </ul>
+            <p>The first two options will end your current session and redirect you to the login page. The third option keeps your current session active while logging out all other devices for enhanced security.</p>
+        </div>
+    );
+
+    const howToDeleteAccount = (
+        <ol className="list-decimal pl-5 space-y-1">
+            <li>Click the account email address at the bottom of the page</li>
+            <li>Click 'Account preferences'</li>
+            <li>Click the 'Delete Account' button at the bottom of the page</li>
+            <li>A confirmation window will appear. Entering an 8-symbol code is required for confirmation</li>
+            <li>After entering the code, click the 'Delete Account' button. A 'Cancel' button is also available on this confirmation window</li>
+        </ol>
+    );
+
+    const whatAreDNSStamps = (
+        <div className="space-y-2">
+            <p>A DNS Stamp is a single string starting with <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">sdns://</code> that bundles everything a client needs to reach a resolver — its IP address, port, protocol (DoH, DoT, DoQ), hostname for TLS, URL path, and properties such as DNSSEC support. Instead of typing each field separately, you paste one string and the client unpacks the rest.</p>
+            <p>Stamps were originally introduced by the DNSCrypt project, but today most encrypted-DNS clients understand them regardless of the underlying protocol. For the full format definition, see <a href="https://dnscrypt.info/stamps-specifications/" target="_blank" rel="noopener noreferrer"><code className="text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">dnscrypt.info/stamps-specifications</code></a>.</p>
+        </div>
+    );
+
+    const whereToFindDNSStamps = (
+        <ol className="list-decimal pl-5 space-y-1">
+            <li>Open the modDNS dashboard and select the profile you want a stamp for</li>
+            <li>Go to <strong>Setup</strong> and choose <strong>Routers</strong></li>
+            <li>Switch to the <strong>DNS Stamps</strong> tab</li>
+            <li>Copy any of the three generated stamps: <strong>DNS over HTTPS</strong>, <strong>DNS over TLS</strong>, or <strong>DNS over QUIC</strong></li>
+        </ol>
+    );
+
+    const dnsStampsCompatibleClients = (
+        <div className="space-y-2">
+            <p>Almost all stamp-aware clients accept the <strong>DoH stamp</strong>. The DoT and DoQ stamps are part of the <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">sdns://</code> specification but are far less widely adopted — at the time of writing, only AdGuard's ecosystem parses them.</p>
+            <ul className="list-disc pl-5 space-y-1">
+                <li><strong>DoH stamp</strong> — works with <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">dnscrypt-proxy</code>, AdGuard Home, AdGuard <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">dnsproxy</code>, UniFi Network DNS Shield, Intra (Android), and Pi-hole via an embedded dnscrypt-proxy</li>
+                <li><strong>DoT stamp</strong> — AdGuard Home and AdGuard <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">dnsproxy</code> only. Everything else (Stubby, Unbound, systemd-resolved, MikroTik, OpenWrt's <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">https-dns-proxy</code>) configures DoT by hostname + port directly, not via a stamp.</li>
+                <li><strong>DoQ stamp</strong> — same as DoT: AdGuard Home and AdGuard <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">dnsproxy</code> only.</li>
+            </ul>
+            <p>A common point of confusion: <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">dnscrypt-proxy</code> accepts only DoH, DNSCrypt, and ODoH stamps — feeding it a DoT or DoQ stamp returns an "Unsupported protocol" error.</p>
+            <p>If your device only exposes hostname, port, and path fields separately, you don't need a stamp — follow the platform-specific guide under <strong>Setup</strong> instead.</p>
+        </div>
+    );
+
+    const dnsStampsEncryption = (
+        <div className="space-y-2">
+            <p>No. A DNS Stamp is an <em>encoding format</em>, not an encryption layer. The encryption is already provided by the protocol the stamp points to:</p>
+            <ul className="list-disc pl-5 space-y-1">
+                <li><strong>DoH</strong> stamps → connection uses TLS over HTTPS</li>
+                <li><strong>DoT</strong> stamps → connection uses TLS directly</li>
+                <li><strong>DoQ</strong> stamps → connection uses QUIC, which negotiates TLS 1.3 in its handshake</li>
+            </ul>
+            <p>All three protocols encrypt every DNS query end-to-end between your client and modDNS. Using a stamp gives you the same encrypted transport you'd get by typing the resolver details by hand — it's just easier to copy and paste.</p>
+        </div>
+    );
+
+    const whyNoDNSCryptStamp = (
+        <div className="space-y-2">
+            <p>The DNSCrypt protocol is a separate encrypted-DNS wire format that predates DoH/DoT/DoQ. modDNS doesn't currently run a DNSCrypt server, so issuing a DNSCrypt-protocol stamp would point clients at a service that doesn't exist.</p>
+            <p>The DoH, DoT, and DoQ stamps we provide give you equivalent end-to-end encryption (all TLS-based). If you specifically use <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">dnscrypt-proxy</code>, configure it with the DoH stamp — that client supports DoH but not DoT/DoQ stamps. For DoT/DoQ stamps, AdGuard Home and AdGuard <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">dnsproxy</code> are the most common consumers.</p>
+        </div>
+    );
+
+    const perDeviceDNSStamps = (
+        <div className="space-y-2">
+            <p>Yes. In the DNS Stamps tab, expand <strong>Advanced options</strong> and enter a label in the <strong>Device label</strong> field (for example <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">Living Room</code>). The three stamps refresh automatically a moment after you stop typing.</p>
+            <p>The label is embedded in the DoH URL path and in the DoT/DoQ TLS hostname, exactly as described in the Device Identification section above. Generate one stamp per device, paste it into that device's client, and your Query Logs will tag each entry with that label.</p>
+            <p>The same character and length rules apply as for any device identifier — see <em>"What are the rules for device identifiers?"</em> in the Device Identification section.</p>
+        </div>
+    );
+
+    const renderFAQContent = () => (
+        <div className="space-y-6">
+            <FAQSection title="Basics" globalToggleSignal={toggleSignal} globalToggleState={toggleState}>
+                <FAQItem
+                    question="What is modDNS?"
+                    answer="modDNS is a privacy-focused DNS service that helps protect privacy and improve security by blocking ads, trackers, and malicious domains. It supports modern DNS protocols including DNS-over-HTTPS (DoH), DNS-over-TLS (DoT), and DNS-over-QUIC (DoQ)."
+                />
+                <FAQItem
+                    question="How do I get modDNS? Do I need a subscription?"
+                    answer={howToGetModDNS}
+                />
+                <FAQItem
+                    question="What DNS protocols do you support?"
+                    answer={supportedProtocols}
+                />
+            </FAQSection>
+
+            <FAQSection title="Privacy" globalToggleSignal={toggleSignal} globalToggleState={toggleState}>
+                <FAQItem
+                    question="How does modDNS protect my privacy?"
+                    answer="By blocking known tracking domains, advertising networks, and malicious websites, using curated and custom blocklists, fewer data points about your online activities can be collected by privacy-invasive companies and information brokers. It also supports DNSSEC for additional security and provides detailed query logs (default: off) so you can monitor what's being blocked."
+                />
+                <FAQItem
+                    question="Do you log my DNS queries?"
+                    answer={
+                        <p>Query logging is optional, off by default. When enabled, retention period is controlled by you, with logs available for review in your dashboard under the Query Logs tab. If query logs are turned off, we don't retain any information on your use of modDNS other than basic account information. Review our <span onClick={() => navigate('/privacy')} className="underline text-[var(--tailwind-colors-rdns-600)] hover:text-[var(--tailwind-colors-rdns-700)] cursor-pointer">Privacy Policy</span> for more information.</p>
+                    }
+                />
+                <FAQItem
+                    question="Does modDNS use QNAME minimisation?"
+                    answer={qnameMinimisation}
+                />
+                <FAQItem
+                    question="Does modDNS send my IP address to other DNS servers (EDNS Client Subnet)?"
+                    answer={ednsClientSubnet}
+                />
+            </FAQSection>
+
+            <FAQSection title="Account & Profiles" globalToggleSignal={toggleSignal} globalToggleState={toggleState}>
+                <FAQItem
+                    question="What are DNS profiles?"
+                    answer="DNS profiles are custom configurations that determine which blocklists and settings apply to your setup. Each profile has a unique ID that you use to configure your devices."
+                />
+                <FAQItem
+                    question="How do I create a DNS profile?"
+                    answer={howToCreateProfile}
+                />
+                <FAQItem
+                    question="How do I rename a DNS profile?"
+                    answer={howToRenameProfile}
+                />
+                <FAQItem
+                    question="How do I delete a DNS profile?"
+                    answer={howToDeleteProfile}
+                />
+                <FAQItem
+                    question="What are sessions and what happens if I choose to log out of them?"
+                    answer={sessionManagement}
+                />
+                <FAQItem
+                    question="How do I delete my account?"
+                    answer={howToDeleteAccount}
+                />
+            </FAQSection>
+
+            <FAQSection title="Account access & subscription states" globalToggleSignal={toggleSignal} globalToggleState={toggleState}>
+                <FAQItem
+                    question="What happens to modDNS when my IVPN subscription expires?"
+                    answer={
+                        <div>
+                            modDNS access follows your IVPN subscription. When it lapses, your account moves through reduced-access states rather than being switched off immediately:
+                            <br /><br />
+                            • <strong>Limited Access</strong> — DNS keeps resolving with your current settings, but changes are locked (blocklists, custom rules, profile settings, logs and analytics are unavailable).
+                            <br />
+                            • <strong>Inactive</strong> — DNS resolution stops for your profiles and only account export and deletion remain available.
+                            <br /><br />
+                            In every case you regain full access by adding time to your IVPN account and re-syncing.
+                        </div>
+                    }
+                />
+                <FAQItem
+                    question="What is Limited Access mode?"
+                    answer="Your modDNS account is in limited access mode when your IVPN subscription has lapsed. DNS continues to resolve with your existing settings, but you can't change blocklists, custom rules or profile settings, and logs and analytics are unavailable. To regain full access, add time to your IVPN account."
+                />
+                <FAQItem
+                    question="Why is my account Inactive?"
+                    answer="An account becomes inactive after roughly 14 days in limited access mode, or immediately if your IVPN plan no longer includes modDNS (for example, after a downgrade to the Standard plan). While inactive, DNS resolution is stopped for your profiles and most of the dashboard is unavailable. Your account is not deleted — it stays recoverable."
+                />
+                <FAQItem
+                    question="How do I restore access to an inactive account?"
+                    answer={
+                        <div>
+                            Add time to your IVPN account so it once again includes modDNS, then re-sync your subscription:
+                            <ol className="list-decimal ml-5 mt-2 space-y-1">
+                                <li>Go to <span onClick={() => navigate('/account-preferences')} className="underline text-[var(--tailwind-colors-rdns-600)] hover:text-[var(--tailwind-colors-rdns-700)] cursor-pointer">Account Preferences</span>.</li>
+                                <li>Use the "Sync with IVPN" action to refresh your subscription status.</li>
+                            </ol>
+                            <br />
+                            Once synced, your full settings and DNS resolution are restored.
+                        </div>
+                    }
+                />
+            </FAQSection>
+
+            <FAQSection title="Device Identification" globalToggleSignal={toggleSignal} globalToggleState={toggleState}>
+                <FAQItem
+                    question="What is device identification and why would I use it?"
+                    answer="Device identification allows you to distinguish between different devices using the same DNS profile. When enabled, you can see which specific device made each DNS query in your logs, making it easier to track and troubleshoot DNS issues across multiple devices."
+                />
+                <FAQItem
+                    question="How do I configure device identification for DNS-over-HTTPS (DoH)?"
+                    answer={
+                        <div>
+                            For DoH connections, add your device identifier to the URL path:
+                            <br /><br />
+                            <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">
+                                https://dns.staging.ivpndns.net/dns-query/PROFILE_ID/DEVICE_ID
+                            </code>
+                            <br /><br />
+                            Example: <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">https://dns.staging.ivpndns.net/dns-query/8kqr1tbfco/laptop</code>
+                            <br /><br />
+                            Replace PROFILE_ID with your actual profile ID and DEVICE_ID with a name for your device (e.g., "laptop", "phone", "router").
+                        </div>
+                    }
+                />
+                <FAQItem
+                    question="How do I configure device identification for DNS-over-TLS (DoT) and DNS-over-QUIC (DoQ)?"
+                    answer={
+                        <div>
+                            For DoT and DoQ connections, add your device identifier as a subdomain:
+                            <br /><br />
+                            <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">
+                                DEVICE_ID--PROFILE_ID.dns.staging.ivpndns.net
+                            </code>
+                            <br /><br />
+                            Examples:
+                            <br />
+                            • DoT (port 853): <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">laptop--8kqr1tbfco.dns.staging.ivpndns.net</code>
+                            <br />
+                            • DoQ (port 853): <code className="bg-[var(--shadcn-ui-app-muted)] text-[var(--shadcn-ui-app-foreground)] px-2 py-0.5 rounded text-sm font-mono border border-[var(--shadcn-ui-app-border)]">phone--8kqr1tbfco.dns.staging.ivpndns.net</code>
+                            <br /><br />
+                            Replace PROFILE_ID with your actual profile ID and DEVICE_ID with a name for your device.
+                        </div>
+                    }
+                />
+                <FAQItem
+                    question="What are the rules for device identifiers?"
+                    answer={
+                        <div>
+                            Device identifiers follow a simple, privacy-focused convention. The system automatically normalizes and truncates values when needed.
+                            <br /><br />
+                            <strong>Length & Truncation</strong>
+                            <br />
+                            • Maximum length: <strong>16 characters</strong> (default). Anything longer is silently truncated.
+                            <br />
+                            • Shorter names (1–16 chars) are used as-is.
+                            <br /><br />
+                            <strong>Characters</strong>
+                            <br />
+                            • Letters (a–z, A–Z), digits (0–9), spaces and hyphens are accepted in input.
+                            <br />
+                            • Apostrophes and other punctuation are stripped during normalization (e.g. Bob's iPhone → stored as <code>bobs iphone</code>). You may still include them in the DoH URL (e.g. <code>Bob%27s%20iPhone</code>) but they won't appear in logs.
+                            <br />
+                            • For DoT/DoQ, spaces are represented as <code>--</code> in the hostname ("Home Router" → <code>home--router</code>).
+                            <br />
+                            • Characters outside a–z, A–Z, 0–9, space, hyphen are removed for DoT/DoQ hostnames.
+                            <br /><br />
+                            <strong>Normalization</strong>
+                            <br />
+                            • Input is lowercased for DNS label usage where required.
+                            <br />
+                            • Multiple spaces are preserved for DoH but condensed by removal of disallowed characters for DoT/DoQ after substitution.
+                            <br />
+                            • Example truncation: <code>this-is-my-fantastic-work-laptop</code> → <code>this-is-my-fanta</code>
+                            <br /><br />
+                            <strong>Examples</strong>
+                            <br />
+                            Good: <code>laptop</code>, <code>home router</code>, <code>ipad-pro</code>, <code>Bob%27s%20iPhone</code> (appears in logs as <code>bobs iphone</code>)
+                            <br />
+                            Truncated: <code>verylongdevicename123</code> → <code>verylongdevicena</code>
+                            <br />
+                            Removed chars (DoT/DoQ): <code>my*game+pc</code> → <code>mygamepc</code>
+                        </div>
+                    }
+                />
+                <FAQItem
+                    question="Can I see device identifiers even if IP logging is disabled?"
+                    answer="Device identifiers are shown in query logs even when the 'Log clients IP' setting is disabled in your profile. This allows you to identify devices without logging IP addresses for enhanced privacy."
+                />
+            </FAQSection>
+
+            <FAQSection title="Blocklists" globalToggleSignal={toggleSignal} globalToggleState={toggleState}>
+                <FAQItem
+                    question="What blocklists are available in modDNS?"
+                    answer="We support a wide range of popular blocklists, including Hagezi, OISD, AdGuard, StevenBlack and others. We curate blocklists combinations for different needs (eg. Basic, Comprehensive, Restrictive) so you can get started with recommended lists easily."
+                />
+                <FAQItem
+                    question="How do I enable/disable blocklists?"
+                    answer={blocklistsInstructions}
+                />
+                <FAQItem
+                    question="What is service blocking (Services tab)?"
+                    answer={servicesBlockingInfo}
+                />
+                <FAQItem
+                    question="Can I block all DNS queries, instead of allowing all by default?"
+                    answer={howToBlockAllQueries}
+                />
+                <FAQItem
+                    question="How do I block subdomains in blocklists?"
+                    answer="Subdomain blocking for blocklists is enabled by default. When enabled, if a blocklist contains a domain like example.com, all its subdomains (e.g. www.example.com) are also blocked. You can change this via 'Settings' > 'BLOCKLISTS' > 'Subdomains in blocklists'."
+                />
+                <FAQItem
+                    question="Will blocklists break websites?"
+                    answer="Some aggressive blocklists may occasionally block legitimate content. Start with 'Basic' protection and gradually add more comprehensive lists. You can always disable specific lists if you encounter issues."
+                />
+            </FAQSection>
+
+            <FAQSection title="Custom Rules" globalToggleSignal={toggleSignal} globalToggleState={toggleState}>
+                <FAQItem
+                    question="How do I add a custom rule?"
+                    answer={howToAddCustomRule}
+                />
+                <FAQItem
+                    question="How are subdomains handled in custom rules?"
+                    answer={customRulesSubdomainsInfo}
+                />
+                <FAQItem
+                    question="What types of entries do Custom Rules support?"
+                    answer={customRulesSupportedInputs}
+                />
+                <FAQItem
+                    question="Which rules take precedence (allowlist, denylist, services, blocklists)?"
+                    answer={rulePrecedenceInfo}
+                />
+                <FAQItem
+                    question="Do I need to add a wildcard symbol (*) for a custom rule?"
+                    answer={wildcardRules}
+                />
+                <FAQItem
+                    question="How does a leading or trailing dot (.) affect a domain?"
+                    answer={dotRules}
+                />
+                <FAQItem
+                    question="When a domain resolves to many IP addresses, do I need to add them all?"
+                    answer={ipAddressRules}
+                />
+            </FAQSection>
+
+            <FAQSection title="DNS Stamps" globalToggleSignal={toggleSignal} globalToggleState={toggleState}>
+                <FAQItem
+                    question="What are DNS Stamps?"
+                    answer={whatAreDNSStamps}
+                />
+                <FAQItem
+                    question="Where do I find my DNS Stamps?"
+                    answer={whereToFindDNSStamps}
+                />
+                <FAQItem
+                    question="Which clients can I use a DNS Stamp with?"
+                    answer={dnsStampsCompatibleClients}
+                />
+                <FAQItem
+                    question="Do DNS Stamps add an extra layer of encryption?"
+                    answer={dnsStampsEncryption}
+                />
+                <FAQItem
+                    question="Why don't you provide a DNSCrypt stamp?"
+                    answer={whyNoDNSCryptStamp}
+                />
+                <FAQItem
+                    question="Can I generate a per-device DNS Stamp?"
+                    answer={perDeviceDNSStamps}
+                />
+            </FAQSection>
+
+            <FAQSection title="Troubleshooting" globalToggleSignal={toggleSignal} globalToggleState={toggleState}>
+                <FAQItem
+                    question="How do I check if modDNS is working?"
+                    answer={howToCheckIfModDNSIsWorking}
+                />
+                <FAQItem
+                    question="Why are some websites not loading?"
+                    answer={whyWebsitesAreNotWorking}
+                />
+                <FAQItem
+                    question="Can I choose which modDNS server my queries are routed to?"
+                    answer={canIChooseServer}
+                />
+            </FAQSection>
+
+            <FAQSection title="Additional Settings" globalToggleSignal={toggleSignal} globalToggleState={toggleState}>
+                <FAQItem
+                    question="What is DNSSEC?"
+                    answer={whatIsDNSSEC}
+                />
+                <FAQItem
+                    question="What is the DNSSEC OK (DO) bit?"
+                    answer={whatIsDNSSECDOBit}
+                />
+                <FAQItem
+                    question="Do you support 2FA?"
+                    answer={
+                        <div>
+                            Two-Factor Authentication adds an additional layer of security to your account. ModDNS supports 2FA, follow these steps:
+                            <br />
+                            {howToEnable2FA}
+                        </div>
+                    }
+                />
+            </FAQSection>
+        </div>
+    );
+
+    return (
+        <div className="relative min-h-screen w-full overflow-x-clip bg-[var(--public-page-background)]">
+            <div className="relative z-10 py-8">
+                <div className="w-full max-w-4xl mx-auto p-8">
+                    {hasHistory && (
+                        <div className="mb-6">
+                            <Button
+                                variant="ghost"
+                                onClick={() => navigate(-1)}
+                                className="flex items-center gap-2 px-3 py-1.5 h-auto min-h-0 text-[var(--tailwind-colors-rdns-600)] hover:text-[var(--tailwind-colors-rdns-700)] hover:bg-black/5 dark:hover:bg-white/10 rounded-md"
+                            >
+                                <ArrowLeft className="h-4 w-4" />
+                                Back
+                            </Button>
+                        </div>
+                    )}
+
+                    <Card className="bg-[var(--shadcn-ui-app-popover)] border-[var(--shadcn-ui-app-border)]">
+                        <CardContent className="p-8">
+                            <div className="flex flex-col items-center mb-8">
+                                <img
+                                    className="mb-4 w-[200px] h-10 mx-auto"
+                                    alt="modDNS logo"
+                                    src={isDarkMode ? modDNSLogoDarkTheme : modDNSLogoLightTheme}
+                                />
+                                <h1 className="text-2xl font-bold text-[var(--shadcn-ui-app-foreground)] text-center font-mono">
+                                    FAQ
+                                </h1>
+                            </div>
+
+                            <div className="max-w-none text-[var(--shadcn-ui-app-foreground)]">
+                                <div className="mb-6">
+                                    <p className="text-sm text-[var(--shadcn-ui-app-muted-foreground)] mb-4">
+                                        Last updated: {FAQ_LAST_UPDATED}
+                                    </p>
+                                    <div className="flex justify-end">
+                                        <Button
+                                            onClick={toggleAllFAQs}
+                                            variant="outline"
+                                            className="text-sm"
+                                        >
+                                            {toggleState ? 'Collapse All' : 'Expand All'}
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                {renderFAQContent()}
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+                <AuthFooter variant="relative" openInNewTab={false} />
+            </div>
+        </div>
+    );
+}

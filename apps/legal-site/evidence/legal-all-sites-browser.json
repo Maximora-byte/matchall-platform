@@ -1,0 +1,72 @@
+[
+  {
+    "host": "www",
+    "status": 200,
+    "title": "MatchAll | One account. Every service.",
+    "overflow": [],
+    "errors": []
+  },
+  {
+    "host": "auth",
+    "status": 200,
+    "title": "MatchAll Account | Unified identity",
+    "overflow": [],
+    "errors": []
+  },
+  {
+    "host": "drive",
+    "status": 200,
+    "title": "MatchAll Drive | Private cloud storage",
+    "overflow": [],
+    "errors": []
+  },
+  {
+    "host": "proxyservice",
+    "status": 200,
+    "title": "MatchAll Network | Global acceleration",
+    "overflow": [],
+    "errors": []
+  },
+  {
+    "host": "mirrors",
+    "status": 200,
+    "title": "MatchAll Mirrors | Software distribution",
+    "overflow": [],
+    "errors": []
+  },
+  {
+    "host": "console",
+    "status": 200,
+    "title": "Unified Console · MatchAll",
+    "overflow": [],
+    "errors": []
+  },
+  {
+    "host": "docs",
+    "status": 200,
+    "title": "MatchAll Docs",
+    "overflow": [],
+    "errors": []
+  },
+  {
+    "host": "status",
+    "status": 200,
+    "title": "Service Status · MatchAll",
+    "overflow": [],
+    "errors": []
+  },
+  {
+    "host": "dns",
+    "status": 200,
+    "title": "MatchAll DNS · 安全解析，自由连接",
+    "overflow": [],
+    "errors": []
+  },
+  {
+    "host": "blog",
+    "status": 200,
+    "title": "MatchAll Blog | Engineering and service updates",
+    "overflow": [],
+    "errors": []
+  }
+]

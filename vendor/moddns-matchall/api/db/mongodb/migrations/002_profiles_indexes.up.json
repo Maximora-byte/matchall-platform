@@ -1,0 +1,13 @@
+[{
+    "createIndexes": "profiles",
+    "indexes": [
+      {
+        "key": {
+          "profile_id": 1
+        },
+        "name": "profile_id_unique",
+        "unique": true,
+        "background": true
+      }
+    ]
+}]

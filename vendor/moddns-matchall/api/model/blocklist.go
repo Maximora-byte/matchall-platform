@@ -1,0 +1,69 @@
+package model
+
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+const (
+	BlocklistTypePublic = "public"
+)
+
+// Blocklist represents the metadata of a blocklist without the actual content
+type Blocklist struct {
+	ID           primitive.ObjectID `json:"id" bson:"_id"`
+	BlocklistID  string             `json:"blocklist_id" bson:"blocklist_id" binding:"required"`
+	Name         string             `json:"name" binding:"required"`        // conventional blocklist name, displayed to the user
+	Description  string             `json:"description" binding:"required"` // displayed to the user
+	Entries      int                `json:"entries" bson:"entries"`
+	Homepage     string             `json:"homepage" bson:"homepage"`
+	SourceUrl    string             `json:"source_url" bson:"source_url"`
+	LastModified time.Time          `json:"last_modified" bson:"last_modified"`
+	Tags         []string           `json:"tags" bson:"tags"`
+	Type         string             `json:"type" bson:"type"`           // ownership: currently always "public" (platform-provided)
+	Kind         string             `json:"kind" bson:"kind"`           // general, category, security
+	Category     string             `json:"category" bson:"category"`   // category key (only when kind=category)
+	Intensity    []string           `json:"intensity" bson:"intensity"` // basic, comprehensive, restrictive
+	Default      bool               `json:"default" bson:"default"`     // default blocklist is enabled when profile is created
+}
+
+// MarshalJSON renders Tags and Intensity as empty JSON arrays ([]) instead of
+// null when nil, so the API always returns lists for these fields.
+func (b Blocklist) MarshalJSON() ([]byte, error) {
+	type alias Blocklist
+	a := alias(b)
+	if a.Tags == nil {
+		a.Tags = []string{}
+	}
+	if a.Intensity == nil {
+		a.Intensity = []string{}
+	}
+	return json.Marshal(a)
+}
+
+// NewBlocklist creates a new blocklist
+func NewBlocklist(blocklistId, name, description, website, sourceUrl, blocklistType string, tags []string, isDefault bool) (*Blocklist, error) {
+	if blocklistId == "" {
+		return nil, fmt.Errorf("blocklist_id cannot be empty")
+	}
+
+	if blocklistType == "" {
+		blocklistType = BlocklistTypePublic
+	}
+
+	return &Blocklist{
+		ID:           primitive.NewObjectID(),
+		BlocklistID:  blocklistId,
+		Name:         name,
+		Description:  description,
+		Homepage:     website,
+		SourceUrl:    sourceUrl,
+		Tags:         tags,
+		Default:      isDefault,
+		Type:         blocklistType,
+		LastModified: time.Now(),
+	}, nil
+}

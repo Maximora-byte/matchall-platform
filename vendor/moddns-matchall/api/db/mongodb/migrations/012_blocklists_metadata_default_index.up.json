@@ -1,0 +1,12 @@
+[{
+  "createIndexes": "blocklists_metadata",
+  "indexes": [
+    {
+      "key": {
+        "default": 1
+      },
+      "name": "default",
+      "background": true
+    }
+  ]
+}]

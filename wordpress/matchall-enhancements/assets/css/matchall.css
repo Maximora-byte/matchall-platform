@@ -1,0 +1,341 @@
+:root {
+    --matchall-ink: #1f2937;
+    --matchall-muted: #64748b;
+    --matchall-surface: rgba(255, 255, 255, 0.9);
+    --matchall-line: rgba(31, 41, 55, 0.12);
+    --matchall-accent: #2563eb;
+    --matchall-cyan: #0891b2;
+    --matchall-rose: #e11d48;
+    --matchall-violet: #7c3aed;
+    --matchall-anime-pink: #fb7185;
+    --matchall-anime-blue: #38bdf8;
+}
+
+body {
+    background:
+        linear-gradient(rgba(37, 99, 235, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(8, 145, 178, 0.045) 1px, transparent 1px),
+        linear-gradient(135deg, #f8fafc 0%, #eef2ff 42%, #ecfeff 100%);
+    background-size: 28px 28px, 28px 28px, auto;
+    color: var(--matchall-ink);
+}
+
+body:before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+        linear-gradient(120deg, rgba(37, 99, 235, 0.08), transparent 38%),
+        linear-gradient(300deg, rgba(225, 29, 72, 0.08), transparent 42%);
+}
+
+body:after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+        radial-gradient(circle at 16% 22%, rgba(251, 113, 133, 0.18), transparent 18%),
+        radial-gradient(circle at 84% 18%, rgba(56, 189, 248, 0.2), transparent 22%),
+        radial-gradient(circle at 78% 82%, rgba(124, 58, 237, 0.14), transparent 24%);
+    opacity: 0.74;
+}
+
+.navbar-main {
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+}
+
+.card,
+.post,
+#footer {
+    border: 1px solid var(--matchall-line) !important;
+    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08) !important;
+}
+
+.card,
+.post {
+    background: rgba(255, 255, 255, 0.86) !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+.post:hover,
+.card:hover {
+    transform: translateY(-2px);
+    transition: transform 180ms ease, box-shadow 180ms ease;
+    box-shadow: 0 22px 54px rgba(15, 23, 42, 0.12) !important;
+}
+
+#banner .shape {
+    background:
+        linear-gradient(135deg, rgba(37, 99, 235, 0.92), rgba(8, 145, 178, 0.84) 42%, rgba(251, 113, 133, 0.86));
+}
+
+#banner .shape:after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(255, 255, 255, 0.11) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.11) 1px, transparent 1px);
+    background-size: 34px 34px;
+    mask-image: linear-gradient(to bottom, #000, transparent 80%);
+}
+
+#banner:after {
+    content: "";
+    position: absolute;
+    right: clamp(18px, 7vw, 120px);
+    bottom: 6px;
+    width: clamp(170px, 24vw, 300px);
+    aspect-ratio: 0.82;
+    background:
+        radial-gradient(circle at 52% 46%, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0.06) 58%, transparent 62%),
+        url("../live2d-cubism4/Diana/raw.preview.png") center bottom / contain no-repeat;
+    opacity: 0.96;
+    filter: drop-shadow(0 24px 36px rgba(15, 23, 42, 0.24));
+    pointer-events: none;
+}
+
+.banner-title-inner {
+    letter-spacing: 0;
+    text-shadow: 0 10px 34px rgba(15, 23, 42, 0.26);
+}
+
+.banner-subtitle {
+    margin-top: 0.7rem;
+    opacity: 0.92;
+}
+
+.btn,
+button,
+input[type="submit"] {
+    border-radius: 8px !important;
+}
+
+a {
+    text-decoration-thickness: 0.08em;
+    text-underline-offset: 0.16em;
+}
+
+.matchall-language-switcher {
+    position: fixed;
+    z-index: 9997;
+    right: 18px;
+    bottom: 338px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.matchall-live2d-note {
+    position: fixed;
+    z-index: 9997;
+    right: 18px;
+    bottom: 272px;
+    width: 166px;
+    padding: 8px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.62);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.84);
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.13);
+    color: #334155;
+    font-size: 12px;
+    line-height: 1.28;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+}
+
+.matchall-live2d-note strong,
+.matchall-live2d-note span {
+    display: block;
+}
+
+.matchall-live2d-note strong {
+    color: var(--matchall-accent);
+    font-size: 13px;
+}
+
+.matchall-live2d-bubble {
+    position: fixed;
+    z-index: 9998;
+    right: 154px;
+    bottom: 214px;
+    width: min(260px, calc(100vw - 190px));
+    padding: 12px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 20px 48px rgba(15, 23, 42, 0.16);
+    color: #263244;
+    font-size: 13px;
+    line-height: 1.35;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 220ms ease, transform 220ms ease;
+    pointer-events: none;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+}
+
+.matchall-live2d-bubble.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.matchall-live2d-bubble strong,
+.matchall-live2d-bubble span {
+    display: block;
+}
+
+.matchall-live2d-bubble strong {
+    margin-bottom: 4px;
+    color: var(--matchall-violet);
+}
+
+#footer {
+    color: var(--matchall-muted);
+}
+
+.matchall-language-switcher a {
+    min-width: 88px;
+    padding: 7px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.58);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+    color: #334155;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.15;
+    text-align: center;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+}
+
+.matchall-language-switcher a:hover,
+.matchall-language-switcher a.is-active {
+    background: #2563eb;
+    color: #fff;
+}
+
+#live2d-widget {
+    z-index: 9996 !important;
+    pointer-events: auto;
+}
+
+.pio-container {
+    right: 0 !important;
+    bottom: 0 !important;
+    z-index: 9996 !important;
+    color: #334155;
+}
+
+.pio-container.left {
+    left: auto !important;
+    right: 0 !important;
+}
+
+.pio-container .pio-dialog {
+    right: 16px !important;
+    left: auto !important;
+    top: -18px !important;
+    min-width: 170px;
+    max-width: 240px;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
+    color: #263244;
+    line-height: 1.45;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+}
+
+.pio-container .pio-dialog:after {
+    content: "";
+    position: absolute;
+    right: 28px;
+    bottom: -7px;
+    width: 12px;
+    height: 12px;
+    background: rgba(255, 255, 255, 0.9);
+    border-right: 1px solid rgba(255, 255, 255, 0.7);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.7);
+    transform: rotate(45deg);
+}
+
+.pio-container .pio-action {
+    top: 54px;
+    right: 12px !important;
+    left: auto !important;
+}
+
+.pio-action span {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background-color: rgba(255, 255, 255, 0.86);
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
+}
+
+.pio-container .pio-show {
+    right: 10px;
+    left: auto;
+    bottom: 12px;
+    background: url("../live2d-cubism4/Diana/raw.preview.png") center bottom / contain no-repeat;
+}
+
+#pio {
+    height: 300px;
+    max-width: min(250px, 38vw);
+}
+
+.pio-container[data-model="Ava"] .pio-show {
+    background-image: url("../live2d-cubism4/Ava/raw.preview.png");
+}
+
+@media (max-width: 767px) {
+    .matchall-language-switcher {
+        right: 10px;
+        bottom: 14px;
+        flex-direction: row;
+    }
+
+    .matchall-language-switcher a {
+        min-width: 0;
+        padding: 7px 9px;
+        font-size: 12px;
+    }
+
+    #live2d-widget,
+    .pio-container {
+        display: block !important;
+    }
+
+    .pio-container {
+        right: -22px !important;
+        bottom: 54px !important;
+        transform: scale(0.58);
+        transform-origin: right bottom;
+        pointer-events: auto !important;
+    }
+
+    .pio-container .pio-action,
+    .pio-container .pio-dialog,
+    .matchall-live2d-note,
+    .matchall-live2d-bubble {
+        display: none !important;
+    }
+
+    #banner:after {
+        opacity: 0.82;
+        right: -12px;
+        bottom: -2px;
+        width: 138px;
+    }
+}

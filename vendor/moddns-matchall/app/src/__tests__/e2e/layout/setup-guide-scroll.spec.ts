@@ -1,0 +1,100 @@
+import { test, expect } from '@playwright/test';
+import { registerMocks } from '../../mocks/registerMocks';
+import { AUTH_KEY } from '@/lib/consts';
+
+// Verifies the setup guide overlay/panel is scrollable in mobile landscape.
+
+test.describe('@layout setup guide scrollability', { tag: '@android' }, () => {
+  test('setup guide overlay scrolls to bottom in landscape', async ({ page }) => {
+  await registerMocks(page, { authenticated: true, customProfiles: [{ id: 'p1', profile_id: 'p1', name: 'Default', settings: { logs: { enabled: true }, custom_rules: [] } }] });
+    await page.goto('/setup');
+
+  // Force landscape below md breakpoint (md ~768px). Use 700x430.
+  await page.setViewportSize({ width: 700, height: 430 });
+
+  // Prefer mobile grid card; fallback to desktop card if responsive layout changes.
+  let windowsCard = page.getByTestId('setup-platform-card-windows');
+  if (!(await windowsCard.count())) {
+    // Fallback: desktop test id
+    windowsCard = page.getByTestId('setup-platform-card-desktop-windows');
+  }
+  if (!(await windowsCard.count())) test.skip();
+  await windowsCard.first().click();
+
+    const panel = page.getByTestId('setup-guide-panel');
+    await expect(panel).toBeVisible();
+
+    const content = page.getByTestId('setup-guide-content');
+    await expect(content).toBeVisible();
+
+    const metricsBefore = await content.evaluate(el => ({ sh: el.scrollHeight, ch: el.clientHeight, st: el.scrollTop }));
+    const scrollable = metricsBefore.sh > metricsBefore.ch + 4; // allow tiny diff margin
+    if (scrollable) {
+      await content.evaluate(el => { el.scrollTop = el.scrollHeight; });
+      const atBottom = await content.evaluate(el => el.scrollTop + el.clientHeight >= el.scrollHeight - 2);
+      expect(atBottom).toBeTruthy();
+    }
+  });
+
+  // Regression guard: when overlay panel is open and content is scrolled to the
+  // bottom, the last step must not be hidden behind the fixed BottomNav.
+  // The panel sits at z-40 and BottomNav at z-50; without a height offset for
+  // the navbar the last step gets clipped under it on mobile.
+  // Auth and profile state are seeded on a public route first (mirrors
+  // setup-overlay-header-visibility.spec.ts) so the protected loader sees them.
+  test('last step is visible above bottom nav when scrolled to bottom', async ({ page }) => {
+    await page.goto('/login');
+    await page.evaluate((key) => {
+      localStorage.setItem(key, 'true');
+      const profiles = [{ id: 'prof1', profile_id: 'prof1', name: 'Default', settings: { custom_rules: [] } }];
+      localStorage.setItem('profiles', JSON.stringify(profiles));
+      localStorage.setItem('activeProfileId', 'prof1');
+    }, AUTH_KEY);
+
+    await registerMocks(page, {
+      authenticated: true,
+      customProfiles: [{ id: 'prof1', profile_id: 'prof1', name: 'Default', settings: { custom_rules: [] } }],
+      ensureActiveProfile: true,
+    });
+
+    await page.goto('/setup');
+    await page.waitForURL(/\/setup$/, { timeout: 10000 });
+
+    // Default Pixel 5 portrait viewport (393x851) is the realistic mobile case
+    // that the bug report describes. Don't override.
+
+    const windowsCard = page.getByTestId('setup-platform-card-windows');
+    await expect(windowsCard).toBeVisible();
+    await windowsCard.click();
+
+    const panel = page.getByTestId('setup-guide-panel');
+    await expect(panel).toBeVisible();
+
+    const content = page.getByTestId('setup-guide-content');
+    await expect(content).toBeVisible();
+
+    const bottomNav = page.getByTestId('bottom-nav');
+    await expect(bottomNav).toBeVisible();
+
+    const lastStep = page.getByTestId('setup-guide-step').last();
+    await expect(lastStep).toBeAttached();
+
+    // Scroll the last step into view (mirrors what a user does on touch) and
+    // assert its bottom edge sits at or above the bottom nav's top edge.
+    // The panel's top/height are measured asynchronously and animate
+    // (transition duration-500), and late-settling content (DNS status check,
+    // header remeasures) can reflow the guide after a one-shot scroll — so
+    // re-scroll and re-measure until the layout stabilises. If the nav offset
+    // regression returns, the panel scrollport extends under the nav and this
+    // can never converge, so the guard still fails.
+    // Allow 1px epsilon for sub-pixel rounding.
+    await expect
+      .poll(async () => {
+        await lastStep.evaluate(el => el.scrollIntoView({ block: 'end', inline: 'nearest' }));
+        const navTop = await bottomNav.evaluate(el => el.getBoundingClientRect().top);
+        const lastStepBottom = await lastStep.evaluate(el => el.getBoundingClientRect().bottom);
+        return lastStepBottom - navTop;
+      }, { timeout: 10_000 })
+      .toBeLessThanOrEqual(1);
+  });
+});

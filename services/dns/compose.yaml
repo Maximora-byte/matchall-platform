@@ -1,0 +1,44 @@
+services:
+  dns-portal:
+    build: /root/.openclaw/workspace/main/dns-platform
+    image: matchall-dns:light-contrast-20260930
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1.0
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp:size=16m]
+    environment:
+      BASE_URL: https://dns.maximoraverse.org
+      DNS_IPV4: 64.110.101.75
+      DNS_IPV6: 2603:c023:16:c400:0:249e:4aa8:be5a
+      DATA_DIR: /data
+      DNS_TLS_SUFFIX: tls.dns.maximoraverse.org
+      OIDC_SECRET_FILE: /run/secrets/oidc.secret
+      TOKEN_KEY_FILE: /run/secrets/token.key
+      MODDNS_API: http://matchall-moddns-api:3000
+      MODDNS_DOH: https://matchall-moddns-proxy:8443
+      MODDNS_KEY_FILE: /run/moddns/internal.key
+      MODDNS_CA_FILE: /run/moddns/ca.pem
+      MODDNS_HEALTH_PROFILE: 9y2scymck8
+    volumes:
+      - /mnt/data/matchall-dns/portal-data:/data
+      - /srv/personal-blog/dns-platform/secrets:/run/secrets:ro
+      - /mnt/data/matchall-moddns/secrets/internal.key:/run/moddns/internal.key:ro
+      - /mnt/data/matchall-moddns/certs/ca.pem:/run/moddns/ca.pem:ro
+      - /mnt/data/matchall-moddns/public-status:/run/dns-health:ro
+    ports: ["127.0.0.1:18084:8000"]
+    networks: [blog, moddns]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+networks:
+  blog:
+    external: true
+    name: personal-blog_blog_internal
+  moddns:
+    external: true
+    name: matchall-moddns-backend

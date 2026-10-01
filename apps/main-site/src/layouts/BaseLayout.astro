@@ -1,0 +1,55 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description: string;
+  canonical?: string;
+}
+
+const { title, description, canonical = "https://www.maximoraverse.org/" } = Astro.props;
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="alternate" hreflang="zh-CN" href={canonical} />
+    <link rel="alternate" hreflang="en" href={`${canonical}?lang=en`} />
+    <link rel="alternate" hreflang="ja" href={`${canonical}?lang=ja`} />
+    <link rel="alternate" hreflang="x-default" href={canonical} />
+    <meta name="theme-color" content="#f5f7fb" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#090b10" media="(prefers-color-scheme: dark)" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="MatchAll" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content="https://www.maximoraverse.org/assets/brand/matchall-social-1200x630.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content="https://www.maximoraverse.org/assets/brand/matchall-social-1200x630.png" />
+    <link rel="icon" href="/assets/brand/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate icon" href="/assets/brand/favicon.ico" />
+    <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png" />
+    <title>{title}</title>
+    <script type="application/ld+json" set:html={JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: "MatchAll",
+      url: canonical,
+      logo: "https://www.maximoraverse.org/assets/brand/matchall-symbol.png",
+      sameAs: ["https://blog.maximoraverse.org/"],
+    })} />
+    <script is:inline defer src="/assets/matchall-ui.js?v=20260930astro2"></script>
+  </head>
+  <body>
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
+    <slot />
+  </body>
+</html>

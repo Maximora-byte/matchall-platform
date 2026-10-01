@@ -1,0 +1,3419 @@
+definitions:
+  announcements.Announcement:
+    properties:
+      body:
+        type: string
+      category:
+        $ref: '#/definitions/announcements.Category'
+      expires_at:
+        type: string
+      id:
+        type: string
+      link:
+        type: string
+      pinned:
+        type: boolean
+      published_at:
+        type: string
+      severity:
+        $ref: '#/definitions/announcements.Severity'
+      title:
+        type: string
+    type: object
+  announcements.Category:
+    enum:
+    - news
+    - feature
+    - maintenance
+    - incident
+    - security
+    - policy
+    type: string
+    x-enum-varnames:
+    - CategoryNews
+    - CategoryFeature
+    - CategoryMaintenance
+    - CategoryIncident
+    - CategorySecurity
+    - CategoryPolicy
+  announcements.Severity:
+    enum:
+    - info
+    - warning
+    - critical
+    type: string
+    x-enum-varnames:
+    - SeverityInfo
+    - SeverityWarning
+    - SeverityCritical
+  api.BlocklistsUpdates:
+    properties:
+      blocklist_ids:
+        items:
+          type: string
+        maxItems: 100
+        minItems: 1
+        type: array
+    required:
+    - blocklist_ids
+    type: object
+  api.ErrResponse:
+    properties:
+      details:
+        items:
+          type: string
+        type: array
+      error:
+        type: string
+    type: object
+  api.ServicesUpdates:
+    properties:
+      service_ids:
+        items:
+          type: string
+        maxItems: 100
+        minItems: 1
+        type: array
+    required:
+    - service_ids
+    type: object
+  api.WebAuthnLoginBeginRequest:
+    properties:
+      email:
+        type: string
+    required:
+    - email
+    type: object
+  api.WebAuthnRegisterBeginRequest:
+    properties:
+      email:
+        type: string
+      subid:
+        type: string
+    required:
+    - email
+    - subid
+    type: object
+  api.createProfileBody:
+    properties:
+      name:
+        maxLength: 50
+        minLength: 1
+        type: string
+    required:
+    - name
+    type: object
+  api.registerAccountBody:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+      subid:
+        type: string
+    required:
+    - email
+    - password
+    - subid
+    type: object
+  api.updateSubscriptionBody:
+    properties:
+      subid:
+        type: string
+    type: object
+  api.verifyEmailOTPBody:
+    properties:
+      otp:
+        type: string
+    required:
+    - otp
+    type: object
+  fiber.Map:
+    additionalProperties: true
+    type: object
+  model.Account:
+    properties:
+      auth_methods:
+        items:
+          type: string
+        type: array
+      email:
+        type: string
+      email_verified:
+        type: boolean
+      error_reports_consent:
+        type: boolean
+      id:
+        type: string
+      mfa:
+        $ref: '#/definitions/model.MFASettings'
+      profiles:
+        items:
+          type: string
+        type: array
+    type: object
+  model.AccountUpdate:
+    properties:
+      operation:
+        enum:
+        - remove
+        - add
+        - replace
+        - move
+        - copy
+        - test
+        type: string
+      path:
+        enum:
+        - /password
+        - /error_reports_consent
+        - /profiles
+        - /email
+        type: string
+      value: {}
+    required:
+    - operation
+    - path
+    - value
+    type: object
+  model.Advanced:
+    properties:
+      recursor:
+        enum:
+        - sdns
+        - knot
+        type: string
+    required:
+    - recursor
+    type: object
+  model.Blocklist:
+    properties:
+      blocklist_id:
+        type: string
+      category:
+        description: category key (only when kind=category)
+        type: string
+      default:
+        description: default blocklist is enabled when profile is created
+        type: boolean
+      description:
+        description: displayed to the user
+        type: string
+      entries:
+        type: integer
+      homepage:
+        type: string
+      id:
+        type: string
+      intensity:
+        description: basic, comprehensive, restrictive
+        items:
+          type: string
+        type: array
+      kind:
+        description: general, category, security
+        type: string
+      last_modified:
+        type: string
+      name:
+        description: conventional blocklist name, displayed to the user
+        type: string
+      source_url:
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      type:
+        description: 'ownership: currently always "public" (platform-provided)'
+        type: string
+    required:
+    - blocklist_id
+    - description
+    - name
+    type: object
+  model.Credential:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+    type: object
+  model.CustomRule:
+    properties:
+      action:
+        type: string
+      group:
+        type: string
+      id:
+        type: string
+      note:
+        type: string
+      order:
+        type: integer
+      value:
+        type: string
+    required:
+    - action
+    - id
+    - value
+    type: object
+  model.CustomRuleGroup:
+    properties:
+      comment:
+        maxLength: 80
+        type: string
+      name:
+        maxLength: 64
+        type: string
+    required:
+    - name
+    type: object
+  model.CustomRuleGroups:
+    properties:
+      allow:
+        items:
+          $ref: '#/definitions/model.CustomRuleGroup'
+        maxItems: 100
+        type: array
+      block:
+        items:
+          $ref: '#/definitions/model.CustomRuleGroup'
+        maxItems: 100
+        type: array
+    type: object
+  model.DNSRequest:
+    properties:
+      dnssec:
+        type: boolean
+      domain:
+        type: string
+      query_type:
+        type: string
+      response_code:
+        type: string
+    type: object
+  model.DNSSECSettings:
+    properties:
+      enabled:
+        type: boolean
+      send_do_bit:
+        type: boolean
+    required:
+    - enabled
+    - send_do_bit
+    type: object
+  model.ExportEnvelope:
+    properties:
+      exportedAt:
+        type: string
+      exportedFrom:
+        $ref: '#/definitions/model.ExportedFromInfo'
+      kind:
+        type: string
+      profiles:
+        items:
+          $ref: '#/definitions/model.ExportedProfile'
+        maxItems: 100
+        minItems: 1
+        type: array
+      schemaVersion:
+        type: integer
+    required:
+    - exportedAt
+    - kind
+    - profiles
+    - schemaVersion
+    type: object
+  model.ExportedAdvanced:
+    properties:
+      recursor:
+        enum:
+        - sdns
+        - unbound
+        type: string
+    type: object
+  model.ExportedCustomRule:
+    properties:
+      action:
+        enum:
+        - block
+        - allow
+        - comment
+        type: string
+      group:
+        description: Group is the optional organizational label this rule belongs
+          to.
+        maxLength: 64
+        type: string
+      note:
+        description: |-
+          Note is a free-text annotation. Free text (not safe_name) so users can write
+          arbitrary reminders; length-capped to match the model/PATCH validators.
+        maxLength: 80
+        type: string
+      value:
+        maxLength: 255
+        type: string
+    required:
+    - action
+    - value
+    type: object
+  model.ExportedDNSSEC:
+    properties:
+      enabled:
+        type: boolean
+      sendDoBit:
+        type: boolean
+    type: object
+  model.ExportedFromInfo:
+    properties:
+      appVersion:
+        type: string
+      service:
+        type: string
+    type: object
+  model.ExportedLogs:
+    properties:
+      enabled:
+        type: boolean
+      logClientsIPs:
+        type: boolean
+      logDomains:
+        type: boolean
+      retention:
+        enum:
+        - 1h
+        - 6h
+        - 1d
+        - 1w
+        - 1m
+        type: string
+    type: object
+  model.ExportedPrivacy:
+    properties:
+      blocklists:
+        items:
+          type: string
+        maxItems: 100
+        type: array
+      blocklistsSubdomainsRule:
+        enum:
+        - block
+        - allow
+        type: string
+      customRulesSubdomainsRule:
+        enum:
+        - include
+        - exact
+        type: string
+      defaultRule:
+        enum:
+        - block
+        - allow
+        type: string
+      services:
+        items:
+          type: string
+        maxItems: 100
+        type: array
+    required:
+    - blocklists
+    - services
+    type: object
+  model.ExportedProfile:
+    properties:
+      comment:
+        maxLength: 200
+        type: string
+      name:
+        description: |-
+          Name of the profile. Names longer than 50 characters are truncated on
+          import (with a warning) rather than rejected, so the wire limit is 200
+          while the persisted profile name is capped at 50.
+        maxLength: 200
+        type: string
+      settings:
+        $ref: '#/definitions/model.ExportedSettings'
+    required:
+    - name
+    - settings
+    type: object
+  model.ExportedRebindingProtection:
+    properties:
+      enabled:
+        type: boolean
+    type: object
+  model.ExportedSecurity:
+    properties:
+      dnssec:
+        $ref: '#/definitions/model.ExportedDNSSEC'
+      rebindingProtection:
+        allOf:
+        - $ref: '#/definitions/model.ExportedRebindingProtection'
+        description: |-
+          RebindingProtection is optional on the wire: envelopes produced before
+          the field existed import with the opt-in default (disabled).
+    type: object
+  model.ExportedSettings:
+    properties:
+      advanced:
+        $ref: '#/definitions/model.ExportedAdvanced'
+      customRuleGroups:
+        allOf:
+        - $ref: '#/definitions/model.CustomRuleGroups'
+        description: |-
+          CustomRuleGroups is the per-list group registry; reuses the storage type
+          (its json tags define the wire shape). Pointer so an empty registry is
+          omitted. Round-trips with the rules' `group` field.
+      customRules:
+        description: CustomRules holds the profile's custom filtering rules, capped
+          at 1000 per profile.
+        items:
+          $ref: '#/definitions/model.ExportedCustomRule'
+        maxItems: 1000
+        type: array
+      logs:
+        $ref: '#/definitions/model.ExportedLogs'
+      privacy:
+        $ref: '#/definitions/model.ExportedPrivacy'
+      security:
+        $ref: '#/definitions/model.ExportedSecurity'
+      statistics:
+        $ref: '#/definitions/model.ExportedStatistics'
+    type: object
+  model.ExportedStatistics:
+    properties:
+      enabled:
+        type: boolean
+    type: object
+  model.LogsSettings:
+    properties:
+      enabled:
+        type: boolean
+      log_clients_ips:
+        type: boolean
+      log_domains:
+        type: boolean
+      retention:
+        $ref: '#/definitions/model.Retention'
+    required:
+    - enabled
+    - log_clients_ips
+    - log_domains
+    - retention
+    type: object
+  model.MFASettings:
+    properties:
+      totp:
+        $ref: '#/definitions/model.TotpSettings'
+    type: object
+  model.Privacy:
+    properties:
+      blocklists:
+        items:
+          type: string
+        type: array
+      blocklists_subdomains_rule:
+        enum:
+        - block
+        - allow
+        type: string
+      custom_rules_subdomains_rule:
+        enum:
+        - include
+        - exact
+        type: string
+      default_rule:
+        enum:
+        - block
+        - allow
+        type: string
+      services:
+        items:
+          type: string
+        type: array
+    required:
+    - blocklists_subdomains_rule
+    - default_rule
+    type: object
+  model.Profile:
+    properties:
+      account_id:
+        type: string
+      id:
+        type: string
+      name:
+        maxLength: 50
+        type: string
+      profile_id:
+        type: string
+      settings:
+        $ref: '#/definitions/model.ProfileSettings'
+    required:
+    - account_id
+    - id
+    - name
+    - profile_id
+    - settings
+    type: object
+  model.ProfileSettings:
+    properties:
+      advanced:
+        $ref: '#/definitions/model.Advanced'
+      custom_rule_groups:
+        allOf:
+        - $ref: '#/definitions/model.CustomRuleGroups'
+        description: |-
+          CustomRuleGroups is the per-list group registry (denylist/allowlist).
+          Organizational metadata only; never synced to the proxy (redis:"-").
+      custom_rules:
+        items:
+          $ref: '#/definitions/model.CustomRule'
+        type: array
+      logs:
+        $ref: '#/definitions/model.LogsSettings'
+      privacy:
+        $ref: '#/definitions/model.Privacy'
+      profile_id:
+        type: string
+      security:
+        $ref: '#/definitions/model.Security'
+      statistics:
+        $ref: '#/definitions/model.StatisticsSettings'
+    required:
+    - advanced
+    - logs
+    - privacy
+    - profile_id
+    - security
+    - statistics
+    type: object
+  model.ProfileUpdate:
+    properties:
+      operation:
+        enum:
+        - remove
+        - add
+        - replace
+        - move
+        - copy
+        type: string
+      path:
+        enum:
+        - /name
+        - /settings/statistics/enabled
+        - /settings/logs/enabled
+        - /settings/logs/log_clients_ips
+        - /settings/logs/log_domains
+        - /settings/logs/retention
+        - /settings/privacy/default_rule
+        - /settings/privacy/blocklists_subdomains_rule
+        - /settings/privacy/custom_rules_subdomains_rule
+        - /settings/security/dnssec/enabled
+        - /settings/security/dnssec/send_do_bit
+        - /settings/security/rebinding_protection/enabled
+        - /settings/advanced/recursor
+        type: string
+      value: {}
+    required:
+    - operation
+    - path
+    - value
+    type: object
+  model.QueryLog:
+    properties:
+      client_ip:
+        type: string
+      device_id:
+        type: string
+      dns_request:
+        $ref: '#/definitions/model.DNSRequest'
+      id:
+        type: string
+      outcome:
+        description: |-
+          Outcome is the proxy-computed resolution-outcome token
+          (docs/specs/query-log-outcomes-behaviour.md). Empty on legacy entries.
+        type: string
+      profile_id:
+        type: string
+      protocol:
+        type: string
+      reasons:
+        items:
+          type: string
+        type: array
+      status:
+        type: string
+      timestamp:
+        type: string
+    type: object
+  model.QueryLogDevice:
+    properties:
+      device_id:
+        type: string
+      last_seen:
+        type: string
+    type: object
+  model.RebindingProtection:
+    properties:
+      enabled:
+        type: boolean
+    type: object
+  model.Retention:
+    enum:
+    - 1h
+    - 6h
+    - 1d
+    - 1w
+    - 1m
+    type: string
+    x-enum-varnames:
+    - RetentionOneHour
+    - RetentionSixHours
+    - RetentionOneDay
+    - RetentionOneWeek
+    - RetentionOneMonth
+  model.Security:
+    properties:
+      dnssec:
+        $ref: '#/definitions/model.DNSSECSettings'
+      rebinding_protection:
+        $ref: '#/definitions/model.RebindingProtection'
+    required:
+    - dnssec
+    type: object
+  model.StatisticsAggregated:
+    properties:
+      total:
+        description: 'Note: "total" needs to be the same as in the repository mongo
+          query'
+        type: integer
+    type: object
+  model.StatisticsSettings:
+    properties:
+      enabled:
+        type: boolean
+    required:
+    - enabled
+    type: object
+  model.Subscription:
+    properties:
+      active_until:
+        type: string
+      deletion_scheduled_at:
+        description: |-
+          DeletionScheduledAt is set when the signup-reset flow schedules an account
+          for deletion. Exposed in the GET /sub JSON (omitted when nil) so the webapp
+          can detect the retired state directly — a non-null value means "retired".
+          It also forces GetStatus() to pending_delete (row L0) and drives the
+          DeleteRetiredAccounts cron. See docs/specs/signup-reset-behaviour.md.
+        type: string
+      outage:
+        type: boolean
+      status:
+        allOf:
+        - $ref: '#/definitions/model.SubscriptionStatus'
+        description: Computed fields (not persisted)
+      tier:
+        type: string
+      type:
+        description: |-
+          Type is a legacy pre-0.1.8 enum ("Free"/"Managed") retained so old documents
+          surface to clients (the beta-ending banner gates on Type == "Managed").
+          Cleared to "" by the resync flow once the user re-syncs with IVPN.
+        type: string
+      updated_at:
+        type: string
+    type: object
+  model.SubscriptionStatus:
+    enum:
+    - active
+    - grace_period
+    - limited_access
+    - inactive
+    - pending_delete
+    type: string
+    x-enum-varnames:
+    - StatusActive
+    - StatusGracePeriod
+    - StatusLimitedAccess
+    - StatusInactive
+    - StatusPendingDelete
+  model.TOTPBackup:
+    properties:
+      backup_codes:
+        items:
+          type: string
+        type: array
+    type: object
+  model.TOTPNew:
+    properties:
+      account:
+        type: string
+      secret:
+        type: string
+      uri:
+        type: string
+    type: object
+  model.TotpSettings:
+    properties:
+      enabled:
+        description: Indicates if TOTP is enabled.
+        type: boolean
+    type: object
+  profile.ImportResult:
+    properties:
+      createdProfileIds:
+        items:
+          type: string
+        type: array
+      createdProfileNames:
+        items:
+          type: string
+        type: array
+      warnings:
+        items:
+          type: string
+        type: array
+    type: object
+  protocol.AttestationFormat:
+    enum:
+    - packed
+    - tpm
+    - android-key
+    - android-safetynet
+    - fido-u2f
+    - apple
+    - none
+    type: string
+    x-enum-varnames:
+    - AttestationFormatPacked
+    - AttestationFormatTPM
+    - AttestationFormatAndroidKey
+    - AttestationFormatAndroidSafetyNet
+    - AttestationFormatFIDOUniversalSecondFactor
+    - AttestationFormatApple
+    - AttestationFormatNone
+  protocol.AuthenticationExtensions:
+    additionalProperties: {}
+    type: object
+  protocol.AuthenticatorAttachment:
+    enum:
+    - platform
+    - cross-platform
+    type: string
+    x-enum-varnames:
+    - Platform
+    - CrossPlatform
+  protocol.AuthenticatorSelection:
+    properties:
+      authenticatorAttachment:
+        allOf:
+        - $ref: '#/definitions/protocol.AuthenticatorAttachment'
+        description: |-
+          AuthenticatorAttachment If this member is present, eligible authenticators are filtered to only
+          authenticators attached with the specified AuthenticatorAttachment enum.
+      requireResidentKey:
+        description: |-
+          RequireResidentKey this member describes the Relying Party's requirements regarding resident
+          credentials. If the parameter is set to true, the authenticator MUST create a client-side-resident
+          public key credential source when creating a public key credential.
+        type: boolean
+      residentKey:
+        allOf:
+        - $ref: '#/definitions/protocol.ResidentKeyRequirement'
+        description: |-
+          ResidentKey this member describes the Relying Party's requirements regarding resident
+          credentials per Webauthn Level 2.
+      userVerification:
+        allOf:
+        - $ref: '#/definitions/protocol.UserVerificationRequirement'
+        description: |-
+          UserVerification This member describes the Relying Party's requirements regarding user verification for
+          the create() operation. Eligible authenticators are filtered to only those capable of satisfying this
+          requirement.
+    type: object
+  protocol.AuthenticatorTransport:
+    enum:
+    - usb
+    - nfc
+    - ble
+    - smart-card
+    - hybrid
+    - internal
+    type: string
+    x-enum-varnames:
+    - USB
+    - NFC
+    - BLE
+    - SmartCard
+    - Hybrid
+    - Internal
+  protocol.ConveyancePreference:
+    enum:
+    - none
+    - indirect
+    - direct
+    - enterprise
+    type: string
+    x-enum-varnames:
+    - PreferNoAttestation
+    - PreferIndirectAttestation
+    - PreferDirectAttestation
+    - PreferEnterpriseAttestation
+  protocol.CredentialAssertion:
+    properties:
+      mediation:
+        $ref: '#/definitions/protocol.CredentialMediationRequirement'
+      publicKey:
+        $ref: '#/definitions/protocol.PublicKeyCredentialRequestOptions'
+    type: object
+  protocol.CredentialCreation:
+    properties:
+      mediation:
+        $ref: '#/definitions/protocol.CredentialMediationRequirement'
+      publicKey:
+        $ref: '#/definitions/protocol.PublicKeyCredentialCreationOptions'
+    type: object
+  protocol.CredentialDescriptor:
+    properties:
+      id:
+        description: CredentialID The ID of a credential to allow/disallow.
+        items:
+          type: integer
+        type: array
+      transports:
+        description: The authenticator transports that can be used.
+        items:
+          $ref: '#/definitions/protocol.AuthenticatorTransport'
+        type: array
+      type:
+        allOf:
+        - $ref: '#/definitions/protocol.CredentialType'
+        description: The valid credential types.
+    type: object
+  protocol.CredentialMediationRequirement:
+    enum:
+    - silent
+    - optional
+    - conditional
+    - required
+    type: string
+    x-enum-varnames:
+    - MediationSilent
+    - MediationOptional
+    - MediationConditional
+    - MediationRequired
+  protocol.CredentialParameter:
+    properties:
+      alg:
+        $ref: '#/definitions/webauthncose.COSEAlgorithmIdentifier'
+      type:
+        $ref: '#/definitions/protocol.CredentialType'
+    type: object
+  protocol.CredentialType:
+    enum:
+    - public-key
+    type: string
+    x-enum-varnames:
+    - PublicKeyCredentialType
+  protocol.PublicKeyCredentialCreationOptions:
+    properties:
+      attestation:
+        $ref: '#/definitions/protocol.ConveyancePreference'
+      attestationFormats:
+        items:
+          $ref: '#/definitions/protocol.AttestationFormat'
+        type: array
+      authenticatorSelection:
+        $ref: '#/definitions/protocol.AuthenticatorSelection'
+      challenge:
+        items:
+          type: integer
+        type: array
+      excludeCredentials:
+        items:
+          $ref: '#/definitions/protocol.CredentialDescriptor'
+        type: array
+      extensions:
+        $ref: '#/definitions/protocol.AuthenticationExtensions'
+      hints:
+        items:
+          $ref: '#/definitions/protocol.PublicKeyCredentialHints'
+        type: array
+      pubKeyCredParams:
+        items:
+          $ref: '#/definitions/protocol.CredentialParameter'
+        type: array
+      rp:
+        $ref: '#/definitions/protocol.RelyingPartyEntity'
+      timeout:
+        type: integer
+      user:
+        $ref: '#/definitions/protocol.UserEntity'
+    type: object
+  protocol.PublicKeyCredentialHints:
+    enum:
+    - security-key
+    - client-device
+    - hybrid
+    type: string
+    x-enum-varnames:
+    - PublicKeyCredentialHintSecurityKey
+    - PublicKeyCredentialHintClientDevice
+    - PublicKeyCredentialHintHybrid
+  protocol.PublicKeyCredentialRequestOptions:
+    properties:
+      allowCredentials:
+        items:
+          $ref: '#/definitions/protocol.CredentialDescriptor'
+        type: array
+      challenge:
+        items:
+          type: integer
+        type: array
+      extensions:
+        $ref: '#/definitions/protocol.AuthenticationExtensions'
+      hints:
+        items:
+          $ref: '#/definitions/protocol.PublicKeyCredentialHints'
+        type: array
+      rpId:
+        type: string
+      timeout:
+        type: integer
+      userVerification:
+        $ref: '#/definitions/protocol.UserVerificationRequirement'
+    type: object
+  protocol.RelyingPartyEntity:
+    properties:
+      id:
+        description: A unique identifier for the Relying Party entity, which sets
+          the RP ID.
+        type: string
+      name:
+        description: |-
+          A human-palatable name for the entity. Its function depends on what the PublicKeyCredentialEntity represents:
+
+          When inherited by PublicKeyCredentialRpEntity it is a human-palatable identifier for the Relying Party,
+          intended only for display. For example, "ACME Corporation", "Wonderful Widgets, Inc." or "ОАО Примертех".
+
+          When inherited by PublicKeyCredentialUserEntity, it is a human-palatable identifier for a user account. It is
+          intended only for display, i.e., aiding the user in determining the difference between user accounts with similar
+          displayNames. For example, "alexm", "alex.p.mueller@example.com" or "+14255551234".
+        type: string
+    type: object
+  protocol.ResidentKeyRequirement:
+    enum:
+    - discouraged
+    - preferred
+    - required
+    type: string
+    x-enum-varnames:
+    - ResidentKeyRequirementDiscouraged
+    - ResidentKeyRequirementPreferred
+    - ResidentKeyRequirementRequired
+  protocol.UserEntity:
+    properties:
+      displayName:
+        description: |-
+          A human-palatable name for the user account, intended only for display.
+          For example, "Alex P. Müller" or "田中 倫". The Relying Party SHOULD let
+          the user choose this, and SHOULD NOT restrict the choice more than necessary.
+        type: string
+      id:
+        description: |-
+          ID is the user handle of the user account entity. To ensure secure operation,
+          authentication and authorization decisions MUST be made on the basis of this id
+          member, not the displayName nor name members. See Section 6.1 of
+          [RFC8266](https://www.w3.org/TR/webauthn/#biblio-rfc8266).
+      name:
+        description: |-
+          A human-palatable name for the entity. Its function depends on what the PublicKeyCredentialEntity represents:
+
+          When inherited by PublicKeyCredentialRpEntity it is a human-palatable identifier for the Relying Party,
+          intended only for display. For example, "ACME Corporation", "Wonderful Widgets, Inc." or "ОАО Примертех".
+
+          When inherited by PublicKeyCredentialUserEntity, it is a human-palatable identifier for a user account. It is
+          intended only for display, i.e., aiding the user in determining the difference between user accounts with similar
+          displayNames. For example, "alexm", "alex.p.mueller@example.com" or "+14255551234".
+        type: string
+    type: object
+  protocol.UserVerificationRequirement:
+    enum:
+    - required
+    - preferred
+    - discouraged
+    type: string
+    x-enum-comments:
+      VerificationPreferred: This is the default
+    x-enum-descriptions:
+    - ""
+    - This is the default
+    - ""
+    x-enum-varnames:
+    - VerificationRequired
+    - VerificationPreferred
+    - VerificationDiscouraged
+  requests.AccountDeletionRequest:
+    properties:
+      current_password:
+        minLength: 1
+        type: string
+      deletion_code:
+        type: string
+      reauth_token:
+        minLength: 1
+        type: string
+    required:
+    - deletion_code
+    type: object
+  requests.AccountUpdates:
+    properties:
+      updates:
+        items:
+          $ref: '#/definitions/model.AccountUpdate'
+        type: array
+    required:
+    - updates
+    type: object
+  requests.AdvancedOptionsReq:
+    properties:
+      encryption_type:
+        enum:
+        - https
+        - tls
+        type: string
+      excluded_wifi_networks:
+        description: ExcludedDomains          string `json:"excluded_domains"`
+        type: string
+    required:
+    - encryption_type
+    type: object
+  requests.ConfirmResetPasswordBody:
+    properties:
+      new_password:
+        type: string
+      otp:
+        type: string
+      token:
+        type: string
+    required:
+    - new_password
+    - token
+    type: object
+  requests.CreateProfileCustomRuleBody:
+    properties:
+      action:
+        enum:
+        - block
+        - allow
+        - comment
+        type: string
+      value:
+        type: string
+    required:
+    - action
+    - value
+    type: object
+  requests.CreateProfileCustomRulesBatchBody:
+    properties:
+      action:
+        enum:
+        - block
+        - allow
+        - comment
+        type: string
+      values:
+        items:
+          type: string
+        maxItems: 20
+        minItems: 1
+        type: array
+    required:
+    - action
+    - values
+    type: object
+  requests.CustomRuleGroupUpdate:
+    properties:
+      action:
+        description: |-
+          Action scopes the op to one list ("block" = denylist, "allow" = allowlist);
+          groups are per-list.
+        enum:
+        - block
+        - allow
+        type: string
+      from:
+        maxLength: 130
+        type: string
+      operation:
+        enum:
+        - add
+        - replace
+        - remove
+        - move
+        type: string
+      path:
+        maxLength: 130
+        type: string
+      value:
+        maxLength: 80
+        type: string
+    required:
+    - action
+    - operation
+    - path
+    type: object
+  requests.CustomRuleGroupUpdates:
+    properties:
+      updates:
+        items:
+          $ref: '#/definitions/requests.CustomRuleGroupUpdate'
+        maxItems: 50
+        minItems: 1
+        type: array
+    required:
+    - updates
+    type: object
+  requests.DNSStampReq:
+    properties:
+      device_id:
+        description: |-
+          DeviceId is an optional human-friendly identifier for the device.
+          It is normalized via libs/deviceid.Normalize (allowing only [A-Za-z0-9 -])
+          before being embedded in the stamps. Empty means "profile-only stamp".
+        type: string
+      profile_id:
+        maxLength: 64
+        minLength: 10
+        type: string
+    required:
+    - profile_id
+    type: object
+  requests.ExportRequest:
+    properties:
+      current_password:
+        minLength: 1
+        type: string
+      profile_ids:
+        items:
+          type: string
+        type: array
+      reauth_token:
+        minLength: 1
+        type: string
+      scope:
+        enum:
+        - all
+        - selected
+        type: string
+    required:
+    - scope
+    type: object
+  requests.ImportRequest:
+    properties:
+      current_password:
+        minLength: 1
+        type: string
+      mode:
+        enum:
+        - create_new
+        type: string
+      payload:
+        $ref: '#/definitions/model.ExportEnvelope'
+      reauth_token:
+        minLength: 1
+        type: string
+    required:
+    - mode
+    - payload
+    type: object
+  requests.LoginBody:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  requests.MobileConfigReq:
+    properties:
+      advanced_options:
+        $ref: '#/definitions/requests.AdvancedOptionsReq'
+      device_id:
+        description: |-
+          DeviceId is an optional human-friendly identifier for the device.
+          It will be normalized (allowing only [A-Za-z0-9 -]) and truncated to a max length
+          consistent with the DNS proxy rules (currently 16). When provided, generated
+          mobileconfig profile endpoints (DoH / DoT / DoQ) will embed it so queries can
+          be attributed per-device.
+        type: string
+      profile_id:
+        type: string
+    required:
+    - profile_id
+    type: object
+  requests.PASessionReq:
+    properties:
+      id:
+        type: string
+      preauth_id:
+        type: string
+      token:
+        type: string
+    required:
+    - id
+    - preauth_id
+    - token
+    type: object
+  requests.ProfileUpdates:
+    properties:
+      updates:
+        items:
+          $ref: '#/definitions/model.ProfileUpdate'
+        type: array
+    required:
+    - updates
+    type: object
+  requests.ReorderProfileCustomRuleGroupsBody:
+    properties:
+      action:
+        enum:
+        - block
+        - allow
+        type: string
+      order:
+        items:
+          type: string
+        maxItems: 100
+        type: array
+    required:
+    - action
+    - order
+    type: object
+  requests.ReorderProfileCustomRulesBody:
+    properties:
+      order:
+        items:
+          type: string
+        maxItems: 10000
+        minItems: 1
+        type: array
+    required:
+    - order
+    type: object
+  requests.ResetPasswordBody:
+    properties:
+      email:
+        type: string
+    required:
+    - email
+    type: object
+  requests.RotatePASessionReq:
+    properties:
+      sessionid:
+        type: string
+    required:
+    - sessionid
+    type: object
+  requests.TotpReq:
+    properties:
+      otp:
+        maxLength: 8
+        minLength: 6
+        type: string
+    required:
+    - otp
+    type: object
+  requests.UpdateProfileCustomRuleBody:
+    properties:
+      action:
+        enum:
+        - block
+        - allow
+        - comment
+        type: string
+      group:
+        maxLength: 64
+        type: string
+      note:
+        maxLength: 80
+        type: string
+      order:
+        minimum: 0
+        type: integer
+      value:
+        type: string
+    type: object
+  requests.WebAuthnReauthBeginRequest:
+    properties:
+      purpose:
+        enum:
+        - email_change
+        - account_deletion
+        - profile_export
+        - profile_import
+        type: string
+    required:
+    - purpose
+    type: object
+  responses.CreateProfileCustomRulesBatchResponse:
+    properties:
+      action:
+        type: string
+      created:
+        items:
+          $ref: '#/definitions/responses.CustomRuleBatchCreated'
+        type: array
+      skipped:
+        items:
+          $ref: '#/definitions/responses.CustomRuleBatchSkipped'
+        type: array
+      total_requested:
+        type: integer
+    type: object
+  responses.CustomRuleBatchCreated:
+    properties:
+      id:
+        type: string
+      value:
+        type: string
+    type: object
+  responses.CustomRuleBatchSkipped:
+    properties:
+      message:
+        type: string
+      reason:
+        type: string
+      value:
+        type: string
+    type: object
+  responses.DNSStampResponse:
+    properties:
+      doh:
+        type: string
+      doq:
+        type: string
+      dot:
+        type: string
+    type: object
+  responses.DeletionCodeResponse:
+    properties:
+      code:
+        type: string
+      expires_at:
+        type: string
+    type: object
+  responses.RegistrationSuccessResponse:
+    properties:
+      message:
+        example: Account created successfully.
+        type: string
+    type: object
+  responses.ShortLinkResponse:
+    properties:
+      link:
+        type: string
+    type: object
+  responses.WebAuthnReauthFinishResponse:
+    properties:
+      expires_at:
+        type: string
+      reauth_token:
+        type: string
+    type: object
+  servicescatalog.Catalog:
+    properties:
+      services:
+        items:
+          $ref: '#/definitions/servicescatalog.Service'
+        type: array
+    type: object
+  servicescatalog.Service:
+    properties:
+      aliases:
+        items:
+          type: string
+        type: array
+      asns:
+        items:
+          type: integer
+        type: array
+      domains:
+        items:
+          type: string
+        type: array
+      id:
+        type: string
+      logo_key:
+        type: string
+      name:
+        type: string
+    type: object
+  webauthncose.COSEAlgorithmIdentifier:
+    enum:
+    - -7
+    - -8
+    - -35
+    - -36
+    - -37
+    - -38
+    - -39
+    - -47
+    - -257
+    - -258
+    - -259
+    - -65535
+    type: integer
+    x-enum-varnames:
+    - AlgES256
+    - AlgEdDSA
+    - AlgES384
+    - AlgES512
+    - AlgPS256
+    - AlgPS384
+    - AlgPS512
+    - AlgES256K
+    - AlgRS256
+    - AlgRS384
+    - AlgRS512
+    - AlgRS1
+info:
+  contact: {}
+  description: modDNS REST API
+  title: modDNS REST API
+  version: "1.0"
+paths:
+  /api/v1/accounts:
+    patch:
+      consumes:
+      - application/json
+      description: Update account
+      parameters:
+      - description: Update account request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.AccountUpdates'
+      - description: MFA OTP code
+        in: header
+        name: x-mfa-code
+        type: string
+      - collectionFormat: csv
+        description: MFA methods
+        in: header
+        items:
+          type: string
+        name: x-mfa-methods
+        type: array
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Update account
+      tags:
+      - Account
+    post:
+      consumes:
+      - application/json
+      description: Register account
+      parameters:
+      - description: Account request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.registerAccountBody'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/responses.RegistrationSuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Register account
+      tags:
+      - Account
+  /api/v1/accounts/current:
+    delete:
+      consumes:
+      - application/json
+      description: Delete account with deletion code
+      parameters:
+      - description: Account deletion request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.AccountDeletionRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Delete account
+      tags:
+      - Account
+    get:
+      description: Get account data
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Account'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get account data
+      tags:
+      - Account
+  /api/v1/accounts/current/deletion-code:
+    post:
+      consumes:
+      - application/json
+      description: Generate a deletion code for account deletion
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/responses.DeletionCodeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Generate deletion code
+      tags:
+      - Account
+  /api/v1/accounts/logout:
+    post:
+      description: Logout endpoint
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Logout
+      tags:
+      - Authentication
+  /api/v1/accounts/mfa/totp/disable:
+    post:
+      consumes:
+      - application/json
+      description: Disable TOTP
+      parameters:
+      - description: Disable TOTP request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.TotpReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Account'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Disable TOTP
+      tags:
+      - Account
+  /api/v1/accounts/mfa/totp/enable:
+    post:
+      consumes:
+      - application/json
+      description: Enable TOTP
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.TOTPNew'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Enable TOTP
+      tags:
+      - Account
+  /api/v1/accounts/mfa/totp/enable/confirm:
+    post:
+      consumes:
+      - application/json
+      description: Confirm TOTP
+      parameters:
+      - description: Confirm TOTP request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.TotpReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.TOTPBackup'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Confirm TOTP
+      tags:
+      - Account
+  /api/v1/accounts/reset-password:
+    post:
+      consumes:
+      - application/json
+      description: Send reset password email
+      parameters:
+      - description: Send reset password email request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.ResetPasswordBody'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Send reset password email
+      tags:
+      - Account
+  /api/v1/announcements:
+    get:
+      description: Get the list of currently published announcements. Public endpoint
+        (no authentication).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/announcements.Announcement'
+            type: array
+      summary: Get announcements
+      tags:
+      - Announcements
+  /api/v1/blocklists:
+    get:
+      description: Get available blocklists data
+      parameters:
+      - default: updated
+        description: field to sort by
+        enum:
+        - updated
+        - name
+        - entries
+        in: query
+        name: sort_by
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Blocklist'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get blocklists data
+      tags:
+      - Blocklists
+  /api/v1/dnsstamp:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Returns DoH, DoT, and DoQ sdns:// strings for the given profile,
+        optionally scoped to a specific device label. Stamps are
+        consumed by clients that don't expose separate hostname/path
+        fields (UniFi Network, dnscrypt-proxy, AdGuard Home upstreams, etc.).
+      parameters:
+      - description: Generate DNS stamp request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.DNSStampReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/responses.DNSStampResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Generate DNS Stamps for a modDNS profile
+      tags:
+      - DNS Stamps
+  /api/v1/login:
+    post:
+      consumes:
+      - application/json
+      description: Login endpoint
+      parameters:
+      - description: Login request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.LoginBody'
+      - description: MFA OTP code
+        in: header
+        name: x-mfa-code
+        type: string
+      - collectionFormat: csv
+        description: MFA methods
+        in: header
+        items:
+          type: string
+        name: x-mfa-methods
+        type: array
+      - description: Remove all active sessions before logging in
+        in: header
+        name: x-sessions-remove
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Login
+      tags:
+      - Authentication
+  /api/v1/mobileconfig:
+    post:
+      consumes:
+      - application/json
+      description: Generate configuration profile for Apple devices
+      parameters:
+      - description: Generate .mobileconfig request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.MobileConfigReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          headers:
+            Content-Disposition:
+              description: attachment; the downloaded .mobileconfig filename
+              type: string
+            Content-Type:
+              description: application/x-apple-aspen-config
+              type: string
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Generate configuration profile for Apple devices
+      tags:
+      - Apple mobileconfig
+  /api/v1/mobileconfig/short:
+    post:
+      consumes:
+      - application/json
+      description: Generate short link for configuration profile (Apple devices)
+      parameters:
+      - description: Generate .mobileconfig request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.MobileConfigReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/responses.ShortLinkResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Generate short link for configuration profile (Apple devices)
+      tags:
+      - Apple mobileconfig
+  /api/v1/pasession/add:
+    post:
+      consumes:
+      - application/json
+      description: Add a pre-auth session to cache (called by preauth service)
+      parameters:
+      - description: Pre-auth session request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.PASessionReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/fiber.Map'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Add pre-auth session
+      tags:
+      - PASession
+  /api/v1/pasession/rotate:
+    put:
+      consumes:
+      - application/json
+      description: |-
+        Rotate pre-auth session ID and set new ID as cookie. The endpoint
+        is idempotent against an already-rotated session: if the URL
+        sessionid is no longer in the cache but the caller already holds
+        a valid pa_session cookie, the call succeeds as a no-op so the
+        user can continue with their existing session.
+      parameters:
+      - description: Rotate pre-auth session request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.RotatePASessionReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Rotate pre-auth session ID
+      tags:
+      - PASession
+  /api/v1/profiles:
+    get:
+      description: Get profiles data
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Profile'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get profiles data
+      tags:
+      - Profile
+    post:
+      consumes:
+      - application/json
+      description: Create profile
+      parameters:
+      - description: Create profile request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.createProfileBody'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Profile'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Create profile
+      tags:
+      - Profile
+  /api/v1/profiles/{id}:
+    delete:
+      description: Delete profile
+      parameters:
+      - description: Profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Delete profile
+      tags:
+      - Profile
+    get:
+      description: Get profile data
+      parameters:
+      - description: Profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Profile'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get profile data
+      tags:
+      - Profile
+    patch:
+      consumes:
+      - application/json
+      description: Update profile
+      parameters:
+      - description: Profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Update profile
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.ProfileUpdates'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Profile'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Update profile
+      tags:
+      - Profile
+  /api/v1/profiles/{id}/blocklists:
+    delete:
+      consumes:
+      - application/json
+      description: Disable blocklists for a profile
+      parameters:
+      - description: Profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Blocklists to disable
+        in: body
+        name: blocklist_ids
+        required: true
+        schema:
+          $ref: '#/definitions/api.BlocklistsUpdates'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Disable blocklists
+      tags:
+      - Profile
+    post:
+      consumes:
+      - application/json
+      description: Enable blocklists for a profile
+      parameters:
+      - description: Profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Blocklists to disable
+        in: body
+        name: blocklist_ids
+        required: true
+        schema:
+          $ref: '#/definitions/api.BlocklistsUpdates'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Enable blocklists
+      tags:
+      - Profile
+  /api/v1/profiles/{id}/custom_rule_groups:
+    patch:
+      consumes:
+      - application/json
+      description: Apply JSON-Patch-style operations to the custom-rule group registry.
+        Group names travel in the JSON-Pointer path/from (never the URL). operation=add|replace
+        sets a group's note (creating it); remove deletes a group (its rules move
+        to Ungrouped, not deleted); move renames from->path.
+      parameters:
+      - description: Profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Group operations
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.CustomRuleGroupUpdates'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Update profile custom rule groups
+      tags:
+      - Profile
+  /api/v1/profiles/{id}/custom_rule_groups/order:
+    patch:
+      consumes:
+      - application/json
+      description: Set the display order of a list's custom-rule group registry. action
+        scopes it to one list (block=denylist, allow=allowlist); groups are per-list.
+        Order is organizational only; unknown names are ignored and omitted groups
+        keep their order, so a stale client list cannot drop a group.
+      parameters:
+      - description: Profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: List and ordered group names
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.ReorderProfileCustomRuleGroupsBody'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Reorder profile custom rule groups
+      tags:
+      - Profile
+  /api/v1/profiles/{id}/custom_rules:
+    post:
+      consumes:
+      - application/json
+      description: Create profile custom rule
+      parameters:
+      - description: Profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Create custom rule request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.CreateProfileCustomRuleBody'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Create profile custom rule
+      tags:
+      - Profile
+  /api/v1/profiles/{id}/custom_rules/{custom_rule_id}:
+    delete:
+      description: Delete profile custom rule
+      parameters:
+      - description: Profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Custom rule ID
+        in: path
+        name: custom_rule_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Delete profile custom rule
+      tags:
+      - Profile
+  /api/v1/profiles/{id}/custom_rules/batch:
+    post:
+      consumes:
+      - application/json
+      description: Create up to 20 custom rules for a profile in a single request
+      parameters:
+      - description: Profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Create custom rules batch request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.CreateProfileCustomRulesBatchBody'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/responses.CreateProfileCustomRulesBatchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Create profile custom rules (batch)
+      tags:
+      - Profile
+  /api/v1/profiles/{id}/custom_rules/order:
+    patch:
+      consumes:
+      - application/json
+      description: Set the display order of a profile's custom rules. Order is organizational
+        only and does not affect filtering precedence.
+      parameters:
+      - description: Profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Ordered rule IDs
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.ReorderProfileCustomRulesBody'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Reorder profile custom rules
+      tags:
+      - Profile
+  /api/v1/profiles/{id}/logs:
+    delete:
+      description: Delete profile query logs
+      parameters:
+      - description: Profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Delete profile query logs
+      tags:
+      - QueryLogs
+    get:
+      description: Get profile query logs
+      parameters:
+      - description: Profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - default: 1
+        description: specify page number
+        in: query
+        name: page
+        type: integer
+      - default: 100
+        description: specify logs limit by page
+        in: query
+        name: limit
+        type: integer
+      - default: '"all"'
+        description: specify status for query
+        enum:
+        - all
+        - blocked
+        - processed
+        - unanswered
+        in: query
+        name: status
+        type: string
+      - default: '"LAST_1_HOUR"'
+        description: specify timespan for query
+        in: query
+        name: timespan
+        type: string
+      - description: specify device ID for filtering
+        in: query
+        name: device_id
+        type: string
+      - description: substring (case-insensitive) match against stored domain; free-form
+          (short inputs may scan more)
+        in: query
+        name: search
+        type: string
+      - default: created
+        description: field to sort by
+        enum:
+        - created
+        - domain
+        - client_ip
+        in: query
+        name: sort_by
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.QueryLog'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get profile query logs
+      tags:
+      - QueryLogs
+  /api/v1/profiles/{id}/logs/devices:
+    get:
+      description: List distinct device IDs seen in the profile's query logs (current
+        retention window), each with its last-seen timestamp, sorted by device ID
+      parameters:
+      - description: Profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.QueryLogDevice'
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get profile query log devices
+      tags:
+      - QueryLogs
+  /api/v1/profiles/{id}/logs/download:
+    get:
+      description: Download profile query logs
+      parameters:
+      - description: Profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.QueryLog'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Download profile query logs
+      tags:
+      - QueryLogs
+  /api/v1/profiles/{id}/services:
+    delete:
+      consumes:
+      - application/json
+      description: Disable services for a profile (removes from privacy.services)
+      parameters:
+      - description: Profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Services to disable
+        in: body
+        name: service_ids
+        required: true
+        schema:
+          $ref: '#/definitions/api.ServicesUpdates'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Disable services
+      tags:
+      - Profile
+    post:
+      consumes:
+      - application/json
+      description: Enable services for a profile (adds to privacy.services)
+      parameters:
+      - description: Profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Services to enable
+        in: body
+        name: service_ids
+        required: true
+        schema:
+          $ref: '#/definitions/api.ServicesUpdates'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Enable services
+      tags:
+      - Profile
+  /api/v1/profiles/{id}/statistics:
+    get:
+      description: Get statistics data for a profile
+      parameters:
+      - description: Profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - default: '"LAST_MONTH"'
+        description: specify timespan for query
+        in: query
+        name: timespan
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.StatisticsAggregated'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get statistics data for a profile
+      tags:
+      - Statistics
+  /api/v1/profiles/{profile_id}/custom_rules/{custom_rule_id}:
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a single custom rule in place (value, action,
+        note, group, order)
+      parameters:
+      - description: Profile ID
+        in: path
+        name: profile_id
+        required: true
+        type: string
+      - description: Custom rule ID
+        in: path
+        name: custom_rule_id
+        required: true
+        type: string
+      - description: Update custom rule request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.UpdateProfileCustomRuleBody'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.CustomRule'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Update profile custom rule
+      tags:
+      - Profile
+  /api/v1/profiles/export:
+    post:
+      consumes:
+      - application/json
+      description: Export user's profiles as a downloadable JSON file
+      parameters:
+      - description: Export request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.ExportRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          headers:
+            Cache-Control:
+              description: no-store; the export contains sensitive data
+              type: string
+            Content-Disposition:
+              description: attachment with a filename of the form moddns-export-<UTC>.moddns.json
+                (contains no PII)
+              type: string
+            Content-Type:
+              description: application/vnd.moddns.export+json; charset=utf-8
+              type: string
+            Pragma:
+              description: no-cache
+              type: string
+            X-modDNS-Export-Truncated:
+              description: count of profiles whose custom rules were truncated to
+                the 1000 per-profile export limit; omitted when nothing was truncated
+              type: integer
+          schema:
+            $ref: '#/definitions/model.ExportEnvelope'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Export profiles
+      tags:
+      - Profile
+  /api/v1/profiles/import:
+    post:
+      consumes:
+      - application/json
+      description: Import profiles from a previously exported JSON file
+      parameters:
+      - description: CSRF guard header — must equal \
+        in: header
+        name: X-modDNS-Import
+        required: true
+        type: string
+      - description: Import request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.ImportRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/profile.ImportResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "415":
+          description: Unsupported Media Type
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Import profiles
+      tags:
+      - Profile
+  /api/v1/services:
+    get:
+      description: Get available ASN-based services presets
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/servicescatalog.Catalog'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get services catalog
+      tags:
+      - Services
+  /api/v1/sessions:
+    delete:
+      description: Delete all sessions for the current account except the current
+        session
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Delete all other sessions
+      tags:
+      - Sessions
+  /api/v1/short/{code}:
+    get:
+      description: Download configuration profile for Apple devices from short link
+      parameters:
+      - description: short code
+        in: path
+        name: code
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          headers:
+            Content-Disposition:
+              description: attachment; the downloaded .mobileconfig filename
+              type: string
+            Content-Type:
+              description: application/x-apple-aspen-config
+              type: string
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Download configuration profile for Apple devices from short link
+      tags:
+      - Apple mobileconfig
+  /api/v1/sub:
+    get:
+      description: Get subscription data for the authenticated account
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Subscription'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get subscription data
+      tags:
+      - Subscription
+  /api/v1/sub/update:
+    put:
+      consumes:
+      - application/json
+      description: Resync subscription using a pre-auth session. Requires pa_session
+        cookie (set by prior PASession rotation). If `subid` is supplied in the body,
+        a signup webhook is fired with that id; otherwise the webhook is skipped.
+      parameters:
+      - description: Optional subid (UUID4) — when supplied, fires the signup webhook
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/api.updateSubscriptionBody'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/fiber.Map'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Update subscription via PASession
+      tags:
+      - Subscription
+  /api/v1/verify/email/otp/confirm:
+    post:
+      consumes:
+      - application/json
+      description: Verifies the 6-digit OTP provided by the authenticated user
+      parameters:
+      - description: OTP verification request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.verifyEmailOTPBody'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "410":
+          description: Gone
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Confirm email verification OTP
+      tags:
+      - Verification
+  /api/v1/verify/email/otp/request:
+    post:
+      description: Generates and sends a 6-digit OTP to verify the authenticated user's
+        email
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Request email verification OTP
+      tags:
+      - Verification
+  /api/v1/verify/reset-password:
+    post:
+      consumes:
+      - application/json
+      description: Confirm password reset
+      parameters:
+      - description: Confirm password reset request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.ConfirmResetPasswordBody'
+      - description: MFA OTP code
+        in: header
+        name: x-mfa-code
+        type: string
+      - collectionFormat: csv
+        description: MFA methods
+        in: header
+        items:
+          type: string
+        name: x-mfa-methods
+        type: array
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Confirm password reset
+      tags:
+      - Verification
+  /api/v1/webauthn/login/begin:
+    post:
+      consumes:
+      - application/json
+      description: Start WebAuthn login process
+      parameters:
+      - description: Login request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.WebAuthnLoginBeginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/protocol.CredentialCreation'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Begin passkey login
+      tags:
+      - Authentication
+  /api/v1/webauthn/login/finish:
+    post:
+      consumes:
+      - application/json
+      description: Complete WebAuthn login process
+      parameters:
+      - description: Remove all other active sessions during login
+        in: header
+        name: x-sessions-remove
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Login completed successfully
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "429":
+          description: Session limit reached
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Finish passkey login
+      tags:
+      - Authentication
+  /api/v1/webauthn/passkey/{id}:
+    delete:
+      description: Delete a specific passkey
+      parameters:
+      - description: Credential ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Delete passkey
+      tags:
+      - Authentication
+  /api/v1/webauthn/passkey/add/begin:
+    post:
+      consumes:
+      - application/json
+      description: Add a new passkey to authenticated account
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema: {}
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Add new passkey
+      tags:
+      - Authentication
+  /api/v1/webauthn/passkey/add/finish:
+    post:
+      consumes:
+      - application/json
+      description: Complete adding a new passkey to authenticated account
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Passkey addition completed successfully
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Complete adding new passkey
+      tags:
+      - Authentication
+  /api/v1/webauthn/passkey/reauth/begin:
+    post:
+      consumes:
+      - application/json
+      description: Initiate a WebAuthn assertion to elevate privileges (e.g., email
+        change)
+      parameters:
+      - description: Reauth begin request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/requests.WebAuthnReauthBeginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/protocol.CredentialAssertion'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+        "429":
+          description: Rate limited
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Begin reauthentication via passkey
+      tags:
+      - Authentication
+  /api/v1/webauthn/passkey/reauth/finish:
+    post:
+      consumes:
+      - application/json
+      description: Complete WebAuthn assertion and issue a short-lived reauth token
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/responses.WebAuthnReauthFinishResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Finish reauthentication via passkey
+      tags:
+      - Authentication
+  /api/v1/webauthn/passkeys:
+    get:
+      description: Get list of passkeys for authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Credential'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Get user passkeys
+      tags:
+      - Authentication
+  /api/v1/webauthn/register/begin:
+    post:
+      consumes:
+      - application/json
+      description: Start WebAuthn registration process for new passkey
+      parameters:
+      - description: Registration request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.WebAuthnRegisterBeginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/protocol.CredentialCreation'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Begin passkey registration
+      tags:
+      - Authentication
+  /api/v1/webauthn/register/finish:
+    post:
+      consumes:
+      - application/json
+      description: Complete WebAuthn registration process
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Registration completed successfully
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrResponse'
+      summary: Finish passkey registration
+      tags:
+      - Authentication
+swagger: "2.0"

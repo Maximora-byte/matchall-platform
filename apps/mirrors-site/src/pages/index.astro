@@ -1,0 +1,79 @@
+---
+const title = 'MatchAll Mirrors · 可信软件分发';
+---
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#f6f7fa" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#090a0c" media="(prefers-color-scheme: dark)" />
+    <title>{title}</title>
+    <meta name="description" content="MatchAll 软件发布、版本管理与安全下载平台" />
+    <link rel="canonical" href="https://mirrors.maximoraverse.org/" />
+    <meta property="og:type" content="website" /><meta property="og:site_name" content="MatchAll" /><meta property="og:title" content="MatchAll Mirrors · 可信软件分发" /><meta property="og:description" content="软件发布、版本管理、完整性校验与安全下载。" /><meta property="og:url" content="https://mirrors.maximoraverse.org/" /><meta property="og:image" content="https://www.maximoraverse.org/assets/brand/matchall-social-1200x630.png" /><meta name="twitter:card" content="summary_large_image" />
+    <script is:inline type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"MatchAll Mirrors","url":"https://mirrors.maximoraverse.org/","applicationCategory":"DeveloperApplication","operatingSystem":"Web"}</script>
+    <link rel="stylesheet" href="/catalog.css?v=20261001-brandfix1" />
+  </head>
+  <body>
+    <a class="skip" href="#catalog">跳转到项目目录</a>
+    <header class="top wrap">
+      <a class="brand" href="https://www.maximoraverse.org/" aria-label="MatchAll Mirrors 首页"><img src="/assets/brand/matchall-symbol.svg" alt="" width="42" height="42" /><span class="brand-copy">MatchAll Mirrors<small>Software distribution</small></span></a>
+      <nav aria-label="主导航">
+        <a href="https://blog.maximoraverse.org/docs/mirrors-user/">文档</a>
+        <a href="/pricing">定价</a>
+        <a href="/developer">开发者</a>
+        <a class="button" href="/account">账户</a>
+      </nav>
+    </header>
+    <main>
+      <section class="hero wrap">
+        <div>
+          <p class="eyebrow">SOFTWARE DISTRIBUTION</p>
+          <h1>发布可靠版本，<br /><em>让更新安全抵达。</em></h1>
+          <p class="lead">统一管理版本、校验信息、灰度发布和下载授权。公开项目无需登录即可浏览。</p>
+          <div class="actions"><a class="button primary" href="#catalog">浏览项目</a><a class="button" href="/developer">发布软件</a></div>
+        </div>
+        <aside class="signal" aria-label="平台能力">
+          <div><span>SHA-256</span><strong>完整性校验</strong></div>
+          <div><span>CHANNELS</span><strong>Stable / Beta / Alpha</strong></div>
+          <div><span>ROLLBACK</span><strong>快速撤回版本</strong></div>
+        </aside>
+      </section>
+      <section id="catalog" class="catalog wrap">
+        <div class="section-head"><div><p class="eyebrow">PROJECT CATALOG</p><h2>软件项目</h2></div><label class="search"><span class="sr-only">搜索项目</span><input id="project-search" type="search" placeholder="搜索名称、简介或许可证" /></label></div>
+        <div id="project-grid" class="grid" aria-live="polite"><article class="loading">正在读取项目目录…</article></div>
+      </section>
+    </main>
+    <footer class="wrap"><span>© 2026 MatchAll Mirrors</span><div><a href="https://status.maximoraverse.org/">服务状态</a><a href="https://www.maximoraverse.org/contact/">联系支持</a></div></footer>
+    <script is:inline>
+      const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+      let projects = [];
+      const grid = document.querySelector('#project-grid');
+      const search = document.querySelector('#project-search');
+      function render() {
+        const query = search.value.trim().toLocaleLowerCase('zh-CN');
+        const visible = projects.filter((project) => `${project.name} ${project.summary} ${project.license}`.toLocaleLowerCase('zh-CN').includes(query));
+        grid.innerHTML = visible.length ? visible.map((project) => `
+          <a class="card" href="/project/${encodeURIComponent(project.slug)}">
+            <div class="card-top"><span class="icon">${esc(project.name).slice(0,1).toUpperCase()}</span><span class="license">${esc(project.license || '—')}</span></div>
+            <h3>${esc(project.name)}</h3><p>${esc(project.summary || '暂无项目简介。')}</p>
+            <span class="go">查看版本与下载 →</span>
+          </a>`).join('') : '<article class="empty">没有匹配的项目。</article>';
+      }
+      async function loadProjects() {
+        try {
+          const response = await fetch('/api/v1/projects', { headers: { accept: 'application/json' } });
+          if (!response.ok) throw new Error(`projects ${response.status}`);
+          const body = await response.json();
+          projects = Array.isArray(body.data) ? body.data : [];
+          render();
+        } catch (error) {
+          grid.innerHTML = '<article class="empty error">项目目录暂时不可用，请稍后重试。</article>';
+        }
+      }
+      search.addEventListener('input', render);
+      loadProjects();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,612 @@
+import { render, screen, fireEvent } from '@testing-library/react';
+import '@testing-library/jest-dom';
+import QueryLogCard from '@/pages/logs/QueryLogCard';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
+import type { ModelQueryLog } from '@/api/client';
+
+// Helper to stub matchMedia with basic capability flags
+function stubDesktopMatchMedia(isDesktop: boolean) {
+    (window as unknown as { matchMedia: (query: string) => MediaQueryList }).matchMedia = (query: string) => {
+        const matchesWidth = /min-width:1024px/.test(query);
+        const matchesHoverFine = /(hover:hover)|(pointer:fine)/.test(query);
+        const matches = isDesktop && (matchesWidth || matchesHoverFine);
+        const mq: MediaQueryList = {
+            matches,
+            media: query,
+            onchange: null,
+            addEventListener: () => { },
+            removeEventListener: () => { },
+            dispatchEvent: () => false,
+            // Deprecated listeners still included for compatibility
+            addListener: () => { },
+            removeListener: () => { }
+        };
+        return mq;
+    };
+}
+
+describe('QueryLogCard truncation display', () => {
+    beforeEach(() => {
+        // Reset viewport width
+        // Override viewport width for desktop simulation
+        (window as unknown as { innerWidth: number }).innerWidth = 1440;
+    });
+
+    test('desktop shows full 16-char device id with no ellipsis', () => {
+        stubDesktopMatchMedia(true);
+        const deviceId = 'device-id-123456'; // 16 chars example
+        const log: ModelQueryLog = {
+            profile_id: 'p1',
+            timestamp: new Date().toISOString(),
+            status: 'processed',
+            protocol: 'dns',
+            device_id: deviceId,
+            client_ip: '10.0.0.1',
+            dns_request: { domain: 'example.com' }
+        };
+        render(<QueryLogCard log={log} />);
+        const fullEl = screen.getByTestId('querylog-device-id-full');
+        expect(fullEl).toHaveTextContent(deviceId);
+        expect(fullEl.textContent).toHaveLength(deviceId.length);
+        expect(fullEl.textContent?.endsWith('…')).toBeFalsy();
+    });
+
+    test('desktop domain display strips trailing dot', () => {
+        stubDesktopMatchMedia(true);
+        const log: ModelQueryLog = {
+            profile_id: 'p-dot',
+            timestamp: new Date().toISOString(),
+            status: 'blocked',
+            protocol: 'dns',
+            device_id: 'device-with-dot',
+            client_ip: '10.0.0.55',
+            dns_request: { domain: 'blocked.example.com.' }
+        };
+        render(<QueryLogCard log={log} />);
+        const domainSpan = screen.getByTestId('querylog-domain-full');
+        expect(domainSpan).toHaveTextContent('blocked.example.com');
+        expect(domainSpan).not.toHaveTextContent(/\.$/);
+    });
+
+    test('mobile renders a static truncated domain span (no tap-to-reveal)', () => {
+        stubDesktopMatchMedia(false);
+        // Override viewport width for mobile simulation
+        (window as unknown as { innerWidth: number }).innerWidth = 375;
+        // Craft a domain exceeding current DOMAIN_TRUNCATE_THRESHOLD (65) to trigger truncation.
+        const longDomain = 'sub.sub.sub.really-long-domain-name-for-testing.example.reallyreallylongsegment.test';
+        const log: ModelQueryLog = {
+            profile_id: 'p2',
+            timestamp: new Date().toISOString(),
+            status: 'processed',
+            protocol: 'dns',
+            device_id: 'short-id',
+            client_ip: '10.0.0.2',
+            dns_request: { domain: longDomain }
+        };
+        render(<QueryLogCard log={log} />);
+        const truncatedDomain = screen.getByTestId('querylog-domain-truncated');
+        expect(truncatedDomain).toBeInTheDocument();
+        // Static truncated text ends with an ellipsis; it is a plain span (not a button).
+        expect(truncatedDomain.textContent).toMatch(/…$/);
+        expect(truncatedDomain.tagName).toBe('SPAN');
+    });
+});
+
+describe('QueryLogCard whole-card expansion', () => {
+    beforeEach(() => {
+        (window as unknown as { innerWidth: number }).innerWidth = 1440;
+        stubDesktopMatchMedia(true);
+    });
+
+    const baseLog: ModelQueryLog = {
+        profile_id: 'p-exp',
+        timestamp: '2026-06-15T10:20:30.000Z',
+        status: 'processed',
+        protocol: 'dns',
+        device_id: 'expand-device',
+        client_ip: '10.0.0.9',
+        dns_request: { domain: 'expand.example.com', query_type: 'A', response_code: 'NOERROR', dnssec: true }
+    };
+
+    test('renders the whole-card toggle', () => {
+        render(<QueryLogCard log={baseLog} />);
+        expect(screen.getByTestId('querylog-card-toggle')).toBeInTheDocument();
+    });
+
+    test('clicking the toggle flips the expanded panel state', () => {
+        render(<QueryLogCard log={baseLog} />);
+        const toggle = screen.getByTestId('querylog-card-toggle');
+        const panel = screen.getByTestId('querylog-expanded-panel');
+        expect(panel).toHaveAttribute('data-expanded', 'false');
+        expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        fireEvent.click(toggle);
+        expect(panel).toHaveAttribute('data-expanded', 'true');
+        expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    test('expanded panel shows the detail grid with protocol and timestamp', () => {
+        render(<QueryLogCard log={baseLog} />);
+        fireEvent.click(screen.getByTestId('querylog-card-toggle'));
+        expect(screen.getByTestId('querylog-detail-grid')).toBeInTheDocument();
+        expect(screen.getByTestId('querylog-detail-protocol')).toHaveTextContent('DNS');
+        expect(screen.getByTestId('querylog-detail-timestamp')).toBeInTheDocument();
+    });
+
+    test('row with reasons renders the reasons block', () => {
+        const log: ModelQueryLog = {
+            ...baseLog,
+            status: 'blocked',
+            reasons: ['blocklist: some-blocklist-id']
+        };
+        render(<QueryLogCard log={log} />);
+        fireEvent.click(screen.getByTestId('querylog-card-toggle'));
+        expect(screen.getByTestId('querylog-reasons')).toBeInTheDocument();
+    });
+
+    test('row without reasons omits the reasons block but still expands', () => {
+        render(<QueryLogCard log={baseLog} />);
+        fireEvent.click(screen.getByTestId('querylog-card-toggle'));
+        expect(screen.getByTestId('querylog-detail-grid')).toBeInTheDocument();
+        expect(screen.queryByTestId('querylog-reasons')).not.toBeInTheDocument();
+    });
+
+    test('domain-logging-disabled row is still expandable and shows a placeholder', () => {
+        const log: ModelQueryLog = {
+            ...baseLog,
+            dns_request: undefined as unknown as ModelQueryLog['dns_request']
+        };
+        render(<QueryLogCard log={log} />);
+        fireEvent.click(screen.getByTestId('querylog-card-toggle'));
+        expect(screen.getByTestId('querylog-detail-domain')).toHaveTextContent('Domain logging disabled');
+    });
+
+    test('controlled mode renders the expanded prop and reports toggles without flipping itself', () => {
+        const onToggleExpanded = vi.fn();
+        const { rerender } = render(
+            <QueryLogCard log={baseLog} expanded={false} onToggleExpanded={onToggleExpanded} />
+        );
+        const toggle = screen.getByTestId('querylog-card-toggle');
+        fireEvent.click(toggle);
+        expect(onToggleExpanded).toHaveBeenCalledTimes(1);
+        // State is owned by the parent — the card must not expand on its own.
+        expect(screen.getByTestId('querylog-expanded-panel')).toHaveAttribute('data-expanded', 'false');
+
+        rerender(<QueryLogCard log={baseLog} expanded={true} onToggleExpanded={onToggleExpanded} />);
+        expect(screen.getByTestId('querylog-expanded-panel')).toHaveAttribute('data-expanded', 'true');
+        expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    test('controlled mode fires onExpand only when opening', () => {
+        const onExpand = vi.fn();
+        const { rerender } = render(
+            <QueryLogCard log={baseLog} expanded={false} onToggleExpanded={() => {}} onExpand={onExpand} />
+        );
+        fireEvent.click(screen.getByTestId('querylog-card-toggle'));
+        expect(onExpand).toHaveBeenCalledTimes(1);
+
+        rerender(
+            <QueryLogCard log={baseLog} expanded={true} onToggleExpanded={() => {}} onExpand={onExpand} />
+        );
+        // Collapsing an open card is not an "expand".
+        fireEvent.click(screen.getByTestId('querylog-card-toggle'));
+        expect(onExpand).toHaveBeenCalledTimes(1);
+    });
+
+    test('animateEntry plays the entry animation with a reduced-motion escape', () => {
+        const { container, rerender } = render(<QueryLogCard log={baseLog} animateEntry />);
+        const root = container.firstElementChild as HTMLElement;
+        expect(root.className).toContain('animate-in');
+        expect(root.className).toContain('motion-reduce:animate-none');
+
+        rerender(<QueryLogCard log={baseLog} />);
+        expect((container.firstElementChild as HTMLElement).className).not.toContain('animate-in');
+    });
+
+    test('there is no visible chevron indicator', () => {
+        render(<QueryLogCard log={baseLog} />);
+        expect(screen.queryByTestId('querylog-expand-indicator')).not.toBeInTheDocument();
+    });
+
+    test('onExpand fires only when expanding (not when collapsing)', () => {
+        const onExpand = vi.fn();
+        render(<QueryLogCard log={baseLog} onExpand={onExpand} />);
+        const toggle = screen.getByTestId('querylog-card-toggle');
+        fireEvent.click(toggle); // expand
+        expect(onExpand).toHaveBeenCalledTimes(1);
+        fireEvent.click(toggle); // collapse
+        expect(onExpand).toHaveBeenCalledTimes(1);
+    });
+
+    test('shows the DNSSEC badge on the collapsed row when validated', () => {
+        render(<QueryLogCard log={baseLog} />); // baseLog has dns_request.dnssec === true
+        expect(screen.getByTestId('querylog-dnssec-badge')).toHaveTextContent('DNSSEC');
+    });
+
+    test('omits the DNSSEC badge when neither validated nor failed', () => {
+        const log: ModelQueryLog = {
+            ...baseLog,
+            dns_request: { ...baseLog.dns_request, dnssec: false }
+        };
+        render(<QueryLogCard log={log} />);
+        expect(screen.queryByTestId('querylog-dnssec-badge')).not.toBeInTheDocument();
+    });
+
+    test('shows a red (failed) DNSSEC badge when validation failed', () => {
+        const log: ModelQueryLog = {
+            ...baseLog,
+            status: 'processed',
+            dns_request: { ...baseLog.dns_request, dnssec: false, response_code: 'SERVFAIL' },
+            reasons: ['dnssec_failed'],
+        };
+        render(<QueryLogCard log={log} />);
+        const badge = screen.getByTestId('querylog-dnssec-badge');
+        expect(badge).toHaveTextContent('DNSSEC');
+        expect(badge).toHaveAttribute('data-dnssec', 'failed');
+    });
+
+    test('labels the reason "Failure reason" for a DNSSEC-failed processed row', () => {
+        // tableRef: logs-reason-display-behaviour #18 — nothing was blocked (the
+        // recursor SERVFAILed on validation), so neither "Block reason" nor
+        // "Allow reason" is truthful.
+        const log: ModelQueryLog = {
+            ...baseLog,
+            status: 'processed',
+            dns_request: { ...baseLog.dns_request, dnssec: false, response_code: 'SERVFAIL' },
+            reasons: ['dnssec_failed'],
+        };
+        render(<QueryLogCard log={log} />);
+        fireEvent.click(screen.getByTestId('querylog-card-toggle'));
+        const reasons = screen.getByTestId('querylog-reasons');
+        expect(reasons).toHaveTextContent('Failure reason');
+        expect(reasons).not.toHaveTextContent('Block reason');
+        expect(reasons).not.toHaveTextContent('Allow reason');
+    });
+
+    test('keeps "Block reason" for genuinely blocked rows with a dnssec reason present', () => {
+        // tableRef: logs-reason-display-behaviour #18 — blocked wins the label.
+        const log: ModelQueryLog = {
+            ...baseLog,
+            status: 'blocked',
+            reasons: ['blocklists', 'dnssec_failed'],
+        };
+        render(<QueryLogCard log={log} />);
+        fireEvent.click(screen.getByTestId('querylog-card-toggle'));
+        expect(screen.getByTestId('querylog-reasons')).toHaveTextContent('Block reason');
+    });
+
+    test('DNSSEC detail field distinguishes the three states', () => {
+        const detailText = (log: ModelQueryLog) => {
+            const { unmount } = render(<QueryLogCard log={log} />);
+            fireEvent.click(screen.getByTestId('querylog-card-toggle'));
+            const text = screen.getByTestId('querylog-detail-dnssec').textContent;
+            unmount();
+            return text;
+        };
+        // validated
+        expect(detailText(baseLog)).toBe('Validated');
+        // unsigned (dnssec false, no failure reason)
+        expect(detailText({ ...baseLog, dns_request: { ...baseLog.dns_request, dnssec: false } })).toBe('No DNSSEC');
+        // failed (bogus)
+        expect(detailText({
+            ...baseLog,
+            status: 'processed',
+            dns_request: { ...baseLog.dns_request, dnssec: false, response_code: 'SERVFAIL' },
+            reasons: ['dnssec_failed'],
+        })).toBe('Validation failed');
+    });
+});
+
+describe('QueryLogCard consolidation (issue #161)', () => {
+    beforeEach(() => {
+        (window as unknown as { innerWidth: number }).innerWidth = 1440;
+        stubDesktopMatchMedia(true);
+    });
+
+    const memberA: ModelQueryLog = {
+        profile_id: 'p-con',
+        timestamp: '2026-06-15T10:20:32.000Z',
+        status: 'processed',
+        protocol: 'dns',
+        device_id: 'con-device',
+        client_ip: '10.0.0.9',
+        dns_request: { domain: 'dup.example.com', query_type: 'A', response_code: 'NOERROR' },
+    };
+    const memberAAAA: ModelQueryLog = {
+        ...memberA,
+        timestamp: '2026-06-15T10:20:30.000Z',
+        dns_request: { domain: 'dup.example.com', query_type: 'AAAA', response_code: 'NXDOMAIN' },
+    };
+    const group = {
+        key: 'con-group',
+        representative: memberA,
+        count: 3,
+        members: [memberA, memberAAAA, memberA],
+        firstTimestamp: memberA.timestamp,
+        lastTimestamp: memberAAAA.timestamp,
+        queryTypes: ['A', 'AAAA'],
+        responseCodes: ['NOERROR', 'NXDOMAIN'],
+    };
+
+    test('single-entry row (no group / count 1) shows no count badge', () => {
+        render(<QueryLogCard log={memberA} />);
+        expect(screen.queryByTestId('querylog-count-badge')).not.toBeInTheDocument();
+        render(<QueryLogCard log={memberA} group={{ ...group, count: 1, members: [memberA], queryTypes: ['A'], responseCodes: ['NOERROR'] }} />);
+        expect(screen.queryByTestId('querylog-count-badge')).not.toBeInTheDocument();
+    });
+
+    test('Occurrences renders for every row so grid positions never shift', () => {
+        // Single entry → "1"; consolidated → the group count. Conditional
+        // rendering would reflow the fields after it between row kinds.
+        render(<QueryLogCard log={memberA} />);
+        fireEvent.click(screen.getByTestId('querylog-card-toggle'));
+        expect(screen.getByTestId('querylog-detail-occurrences')).toHaveTextContent('1');
+    });
+
+    test('the Queries chip block renders for every row and there is no Outcome field', () => {
+        // tableRef: query-log-outcomes-behaviour C1 — consistent placement: the
+        // block appears for uniform groups too, one chip per distinct pair.
+        const uniformA = { ...memberA, outcome: 'blocked', status: 'blocked' };
+        const uniformAAAA = { ...memberAAAA, outcome: 'blocked', status: 'blocked' };
+        const uniformGroup = { ...group, members: [uniformA, uniformAAAA, uniformA] };
+        render(<QueryLogCard log={uniformA} group={uniformGroup} />);
+        fireEvent.click(screen.getByTestId('querylog-card-toggle'));
+        expect(screen.queryByTestId('querylog-detail-outcome')).not.toBeInTheDocument();
+        expect(screen.getByTestId('querylog-outcome-pairs')).toBeInTheDocument();
+        const chips = screen.getAllByTestId('querylog-outcome-pair');
+        expect(chips).toHaveLength(2);
+        expect(chips[0]).toHaveTextContent('A · Blocked');
+        expect(chips[1]).toHaveTextContent('AAAA · Blocked');
+    });
+
+    test('a mixed group shows one chip per distinct type·outcome pair', () => {
+        // tableRef: query-log-outcomes-behaviour C1
+        const resolvedA = { ...memberA, outcome: 'resolved' };
+        const nodataAAAA = {
+            ...memberAAAA,
+            outcome: 'nodata',
+            dns_request: { ...memberAAAA.dns_request, response_code: 'NOERROR' },
+        };
+        const mixedGroup = { ...group, members: [resolvedA, nodataAAAA, resolvedA] };
+        render(<QueryLogCard log={resolvedA} group={mixedGroup} />);
+        fireEvent.click(screen.getByTestId('querylog-card-toggle'));
+        const chips = screen.getAllByTestId('querylog-outcome-pair');
+        expect(chips).toHaveLength(2);
+        expect(chips[0]).toHaveTextContent('A · Resolved');
+        expect(chips[1]).toHaveTextContent('AAAA · No records');
+        expect(chips[1]).toHaveAttribute('aria-label', 'AAAA: No records');
+    });
+
+    test('consolidated reasons aggregate across all members, not just the representative', () => {
+        // tableRef: query-log-outcomes-behaviour C2 — `reasons` is not part of
+        // the consolidation signature, so members can carry different reasons;
+        // showing only the representative's silently drops the rest.
+        const blockedA = { ...memberA, status: 'blocked', outcome: 'blocked', reasons: ['blocklists'] };
+        const blockedAAAA = { ...memberAAAA, status: 'blocked', outcome: 'blocked', reasons: ['custom_rules'] };
+        const mixedReasonGroup = { ...group, members: [blockedA, blockedAAAA, blockedA] };
+        render(<QueryLogCard log={blockedA} group={mixedReasonGroup} />);
+        fireEvent.click(screen.getByTestId('querylog-card-toggle'));
+        const reasonsBlock = screen.getByTestId('querylog-reasons');
+        expect(reasonsBlock).toHaveTextContent('Blocklist');
+        expect(reasonsBlock).toHaveTextContent('Custom rule');
+    });
+
+    test('chip sections are programmatically labeled groups', () => {
+        const blockedA = { ...memberA, status: 'blocked', outcome: 'blocked', reasons: ['blocklists'] };
+        render(<QueryLogCard log={blockedA} />);
+        fireEvent.click(screen.getByTestId('querylog-card-toggle'));
+        for (const testid of ['querylog-outcome-pairs', 'querylog-reasons']) {
+            const section = screen.getByTestId(testid);
+            expect(section).toHaveAttribute('role', 'group');
+            const labelledBy = section.getAttribute('aria-labelledby');
+            expect(labelledBy).toBeTruthy();
+            expect(document.getElementById(labelledBy!)).not.toBeNull();
+        }
+    });
+
+    test('a single entry renders one Queries chip in the same block', () => {
+        // tableRef: query-log-outcomes-behaviour C1 — single rows use the
+        // identical block/slot so the panel layout never shifts between rows.
+        const nodataLog = {
+            ...memberAAAA,
+            outcome: 'nodata',
+            dns_request: { ...memberAAAA.dns_request, response_code: 'NOERROR' },
+        };
+        render(<QueryLogCard log={nodataLog} />);
+        fireEvent.click(screen.getByTestId('querylog-card-toggle'));
+        expect(screen.queryByTestId('querylog-detail-outcome')).not.toBeInTheDocument();
+        const chips = screen.getAllByTestId('querylog-outcome-pair');
+        expect(chips).toHaveLength(1);
+        expect(chips[0]).toHaveTextContent('AAAA · No records');
+    });
+
+    test('consolidated row shows a ×N count badge', () => {
+        render(<QueryLogCard log={memberA} group={group} />);
+        const badge = screen.getByTestId('querylog-count-badge');
+        expect(badge).toHaveTextContent('×3');
+        expect(badge).toHaveAttribute('data-count', '3');
+    });
+
+    test('expanded panel aggregates query types, response codes, occurrences and a time range', () => {
+        render(<QueryLogCard log={memberA} group={group} />);
+        fireEvent.click(screen.getByTestId('querylog-card-toggle'));
+        expect(screen.getByTestId('querylog-detail-query-type')).toHaveTextContent('A, AAAA');
+        expect(screen.getByTestId('querylog-detail-response-code')).toHaveTextContent('NOERROR, NXDOMAIN');
+        expect(screen.getByTestId('querylog-detail-occurrences')).toHaveTextContent('3');
+        // group spans 2s (10:20:30 → 10:20:32) → a time RANGE with an en dash and "Time range" label.
+        expect(screen.getByTestId('querylog-detail-timestamp').textContent).toMatch(/–/);
+        expect(screen.getByText('Time range')).toBeInTheDocument();
+    });
+
+    test('a group whose members share the same second shows a single "Time", not a range', () => {
+        // A + AAAA fired back-to-back: same second, differing only in milliseconds.
+        const sameSecondGroup = {
+            ...group,
+            firstTimestamp: '2026-06-15T10:20:32.480Z',
+            lastTimestamp: '2026-06-15T10:20:32.010Z',
+        };
+        render(<QueryLogCard log={{ ...memberA, timestamp: '2026-06-15T10:20:32.480Z' }} group={sameSecondGroup} />);
+        fireEvent.click(screen.getByTestId('querylog-card-toggle'));
+        // No en dash → single time; label is the plain "Time" (exact, not "Time range").
+        expect(screen.getByTestId('querylog-detail-timestamp').textContent).not.toMatch(/–/);
+        expect(screen.getByText('Time')).toBeInTheDocument();
+        expect(screen.queryByText('Time range')).not.toBeInTheDocument();
+    });
+});
+
+describe('QueryLogCard collapsed status indicator', () => {
+    beforeEach(() => {
+        (window as unknown as { innerWidth: number }).innerWidth = 1440;
+        stubDesktopMatchMedia(true);
+    });
+
+    const baseLog: ModelQueryLog = {
+        profile_id: 'p-chip',
+        timestamp: '2026-06-15T10:20:30.000Z',
+        status: 'processed',
+        protocol: 'dns',
+        device_id: 'chip-device',
+        client_ip: '10.0.0.9',
+        dns_request: { domain: 'chip.example.com', query_type: 'A', response_code: 'NOERROR' },
+    };
+
+    test('blocked row shows the red Blocked pill', () => {
+        // tableRef: query-log-outcomes-behaviour C3 — Blocked precedence unchanged.
+        render(<QueryLogCard log={{ ...baseLog, status: 'blocked', outcome: 'blocked' }} />);
+        const indicator = screen.getByTestId('querylog-status-indicator');
+        expect(indicator).toHaveTextContent('Blocked');
+        expect(indicator).toHaveAttribute('data-state', 'blocked');
+    });
+
+    test('unanswered outcomes show the "No answer" text label on the collapsed row', () => {
+        // tableRef: query-log-outcomes-behaviour C3 — a text micro-label (like the
+        // protocol/DNSSEC labels), not a filled pill: pills are policy actions.
+        for (const outcome of ['servfail_upstream', 'timeout', 'network_error', 'refused']) {
+            const { unmount } = render(<QueryLogCard log={{
+                ...baseLog,
+                outcome,
+                dns_request: { ...baseLog.dns_request, response_code: 'SERVFAIL' },
+            }} />);
+            const indicator = screen.getByTestId('querylog-status-indicator');
+            expect(indicator).toHaveTextContent('No answer');
+            expect(indicator).toHaveAttribute('data-state', 'unanswered');
+            expect(indicator.tagName).toBe('SPAN'); // text label, not a Badge pill
+            unmount();
+        }
+    });
+
+    test('answered rows show no status indicator at all', () => {
+        // tableRef: query-log-outcomes-behaviour C3 — resolved/nodata/nxdomain are
+        // healthy answers; servfail_dnssec is owned by the red DNSSEC label.
+        for (const outcome of ['resolved', 'nodata', 'nxdomain', 'servfail_dnssec']) {
+            const { unmount } = render(<QueryLogCard log={{ ...baseLog, outcome }} />);
+            expect(screen.queryByTestId('querylog-status-indicator')).not.toBeInTheDocument();
+            unmount();
+        }
+    });
+
+    test('a consolidated group with any unanswered member shows the label', () => {
+        // tableRef: query-log-outcomes-behaviour C3 — outcome is not in the
+        // consolidation signature; the representative alone would miss the timeout.
+        const resolvedA = { ...baseLog, outcome: 'resolved' };
+        const timeoutAAAA = {
+            ...baseLog,
+            outcome: 'timeout',
+            dns_request: { ...baseLog.dns_request, query_type: 'AAAA', response_code: '' },
+        };
+        const group = {
+            key: 'chip-group',
+            representative: resolvedA,
+            count: 2,
+            members: [resolvedA, timeoutAAAA],
+            firstTimestamp: baseLog.timestamp,
+            lastTimestamp: baseLog.timestamp,
+            queryTypes: ['A', 'AAAA'],
+            responseCodes: ['NOERROR'],
+        };
+        render(<QueryLogCard log={resolvedA} group={group} />);
+        const indicator = screen.getByTestId('querylog-status-indicator');
+        expect(indicator).toHaveTextContent('No answer');
+        expect(indicator).toHaveAttribute('data-state', 'unanswered');
+    });
+});
+
+describe('QueryLogCard quick rule button', () => {
+    beforeEach(() => {
+        (window as unknown as { innerWidth: number }).innerWidth = 1280;
+        stubDesktopMatchMedia(true);
+    });
+
+    test('fires callback with normalized domain', () => {
+        const onQuickRule = vi.fn();
+        const log: ModelQueryLog = {
+            profile_id: 'p3',
+            timestamp: new Date().toISOString(),
+            status: 'processed',
+            protocol: 'dns',
+            device_id: 'desktop-device',
+            client_ip: '10.0.0.3',
+            dns_request: { domain: 'Example.com.' }
+        };
+        render(<QueryLogCard log={log} onQuickRule={onQuickRule} />);
+        const button = screen.getByTestId('logs-quick-rule-button');
+        expect(button).toBeEnabled();
+        fireEvent.click(button);
+        expect(onQuickRule).toHaveBeenCalledTimes(1);
+        expect(onQuickRule).toHaveBeenCalledWith('Example.com', 'denylist');
+    });
+
+    test('disables button when domain missing', () => {
+        const onQuickRule = vi.fn();
+        const log: ModelQueryLog = {
+            profile_id: 'p4',
+            timestamp: new Date().toISOString(),
+            status: 'processed',
+            protocol: 'dns',
+            device_id: 'desktop-device',
+            client_ip: '10.0.0.4',
+            // Domain logging disabled
+            dns_request: undefined as unknown as ModelQueryLog['dns_request']
+        };
+        render(<QueryLogCard log={log} onQuickRule={onQuickRule} />);
+        const button = screen.getByTestId('logs-quick-rule-button');
+        expect(button).toBeDisabled();
+        fireEvent.click(button);
+        expect(onQuickRule).not.toHaveBeenCalled();
+    });
+});
+
+// specRef: query-log-outcomes-behaviour.md #C4
+describe('QueryLogCard unavailable status (settings store unreachable)', () => {
+    beforeEach(() => {
+        (window as unknown as { innerWidth: number }).innerWidth = 1280;
+        stubDesktopMatchMedia(true);
+    });
+
+    const unavailableLog: ModelQueryLog = {
+        profile_id: 'p5',
+        timestamp: new Date().toISOString(),
+        status: 'unavailable',
+        outcome: 'filter_unavailable',
+        protocol: 'dns',
+        device_id: 'desktop-device',
+        client_ip: '10.0.0.5',
+        dns_request: { domain: 'unavailable.example.com.', query_type: 'A', response_code: 'SERVFAIL' }
+    };
+
+    test('never shows the Blocked pill and reports No answer', () => {
+        render(<QueryLogCard log={unavailableLog} />);
+        const indicator = screen.getByTestId('querylog-status-indicator');
+        expect(indicator).not.toHaveAttribute('data-state', 'blocked');
+        expect(indicator).toHaveTextContent(/no answer/i);
+    });
+
+    test('quick rule keeps the processed affordance and defaults to denylist', () => {
+        const onQuickRule = vi.fn();
+        render(<QueryLogCard log={unavailableLog} onQuickRule={onQuickRule} />);
+        const button = screen.getByTestId('logs-quick-rule-button');
+        expect(button.className).toContain('slate-800');
+        expect(button.className).not.toContain('rdns-600');
+        fireEvent.click(button);
+        expect(onQuickRule).toHaveBeenCalledWith('unavailable.example.com', 'denylist');
+    });
+});

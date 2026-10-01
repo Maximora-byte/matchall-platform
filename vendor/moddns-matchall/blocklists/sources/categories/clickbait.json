@@ -1,0 +1,14 @@
+[
+  {
+    "blocklist_id": "blp_fakenews",
+    "name": "Fake News / Clickbait",
+    "description": "StevenBlack community-curated list blocking fake news and misinformation domains.",
+    "source_url": "https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/fakenews-only/hosts",
+    "homepage": "https://github.com/StevenBlack/hosts",
+    "syntax": "domains",
+    "kind": "category",
+    "category": "clickbait",
+    "tags": ["category", "clickbait", "steven_black"],
+    "schedule": "48 * * * *"
+  }
+]

@@ -1,0 +1,18 @@
+[
+    {
+      "dropIndexes": "accounts",
+      "index": "email"
+    },
+    {
+      "dropIndexes": "accounts",
+      "index": "tokens"
+    },
+    {
+      "dropIndexes": "accounts",
+      "index": "profile_id"
+    },
+    {
+      "dropIndexes": "accounts",
+      "index": "profile_id_and_temporary_account"
+    }
+]

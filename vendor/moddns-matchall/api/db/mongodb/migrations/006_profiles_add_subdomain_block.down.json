@@ -1,0 +1,17 @@
+[
+  {
+    "update": "profiles",
+    "updates": [
+      {
+        "q": {},
+        "u": {
+          "$unset": {
+            "settings.privacy.subdomains_rule": "allow"
+          }
+        },
+        "multi": true
+      }
+    ],
+    "writeConcern": { "w": "majority" }
+  }
+]

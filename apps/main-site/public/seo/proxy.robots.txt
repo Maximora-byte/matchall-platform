@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /$
+Allow: /contact$
+Allow: /privacy$
+Allow: /terms$
+Allow: /refund$
+Allow: /pricing$
+Disallow: /app
+Disallow: /api/
+Disallow: /auth/
+Disallow: /login
+Disallow: /register
+Sitemap: https://proxyservice.maximoraverse.org/sitemap.xml

@@ -1,0 +1,24 @@
+---
+title: MatchAll Docs
+description: 文档、教程与排障，集中在一个地方。
+template: splash
+hero:
+  tagline: 面向 Account、Drive、Network、Mirrors 与开发者平台的统一帮助中心。
+  actions:
+    - text: 快速开始
+      link: /docs/getting-started/
+      icon: right-arrow
+      variant: primary
+    - text: 查看服务状态
+      link: https://status.maximoraverse.org/
+      icon: external
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid>
+  <Card title="统一账户" icon="seti:lock">登录、恢复、会话与账户安全。</Card>
+  <Card title="Drive" icon="seti:folder">同步、分享和 WebDAV 使用指南。</Card>
+  <Card title="Network" icon="seti:network">客户端、线路与连接排障。</Card>
+  <Card title="Mirrors" icon="seti:package">下载校验、授权与开发者发布。</Card>
+</CardGrid>

@@ -1,0 +1,310 @@
+---
+import { siteConfig } from "../config";
+import { localeInfo, locales, translations, type Locale } from "../i18n";
+import "../styles/global.css";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = translations[locale];
+const currentLocale = localeInfo[locale];
+const canonical = new URL(currentLocale.path, siteConfig.siteUrl).toString();
+const year = new Date().getFullYear();
+const personSchema = {
+  "@context": "https://schema.org",
+  "@type": "Person",
+  name: siteConfig.name,
+  url: canonical,
+  jobTitle: t.hero.role,
+  description: t.meta.description,
+  inLanguage: currentLocale.htmlLang,
+  sameAs: [siteConfig.links.github, siteConfig.links.blog],
+  knowsAbout: siteConfig.skills,
+};
+---
+
+<!doctype html>
+<html lang={currentLocale.htmlLang} data-theme="auto" data-locale={locale}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="description" content={t.meta.description} />
+    <meta name="theme-color" content="#07111f" />
+    <meta name="color-scheme" content="dark light" />
+    <meta property="og:type" content="profile" />
+    <meta property="og:title" content={t.meta.title} />
+    <meta property="og:description" content={t.meta.description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:locale" content={currentLocale.ogLocale} />
+    {locales.filter((code) => code !== locale).map((code) => (
+      <meta property="og:locale:alternate" content={localeInfo[code].ogLocale} />
+    ))}
+    <meta property="og:image" content={siteConfig.siteUrl + "/og-card.svg"} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href={canonical} />
+    {locales.map((code) => (
+      <link rel="alternate" hreflang={localeInfo[code].htmlLang} href={new URL(localeInfo[code].path, siteConfig.siteUrl).toString()} />
+    ))}
+    <link rel="alternate" hreflang="x-default" href={siteConfig.siteUrl + "/"} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <script type="application/ld+json" set:html={JSON.stringify(personSchema)} />
+    <title>{t.meta.title}</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">{t.skip}</a>
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
+
+    <header class="site-header" data-header>
+      <a class="brand" href="#top" aria-label="CHANGAO MA home">
+        <span class="brand-mark" aria-hidden="true">CM</span>
+        <span class="brand-copy"><strong>CHANGAO MA</strong><small>MAXIMORA / PORTFOLIO</small></span>
+      </a>
+      <nav class="desktop-nav" aria-label="Primary navigation">
+        <a href="#about">{t.nav.about}</a>
+        <a href="#work">{t.nav.work}</a>
+        <a href="#approach">{t.nav.approach}</a>
+        <a href="#contact">{t.nav.contact}</a>
+      </nav>
+      <div class="header-actions">
+        <button class="icon-button command-button" type="button" data-command-open aria-label={t.controls.command} title={t.controls.command + " (Ctrl/Command K)"}>⌘K</button>
+        <label class="language-control">
+          <span class="sr-only">{t.controls.language}</span>
+          <select data-language-select aria-label={t.controls.language}>
+            {locales.map((code) => (
+              <option value={localeInfo[code].path} selected={code === locale}>{localeInfo[code].label}</option>
+            ))}
+          </select>
+        </label>
+        <button class="icon-button theme-button" type="button" data-theme-toggle aria-label={t.controls.theme}><span aria-hidden="true">◐</span></button>
+        <button class="menu-button" type="button" data-menu-open aria-label={t.controls.menuOpen} aria-controls="mobile-menu">Menu</button>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero shell" id="top" aria-labelledby="hero-title">
+        <div class="hero-copy reveal">
+          <p class="eyebrow"><span class="status-dot"></span>{t.hero.eyebrow}</p>
+          <h1 id="hero-title">
+            {t.hero.line1}<br />{t.hero.line2}<span class="gradient-text">{t.hero.accent}</span>{t.hero.end}
+          </h1>
+          <p class="hero-lead">{t.hero.lead}</p>
+          <div class="hero-actions">
+            <a class="button primary" href="#work">{t.hero.explore}<span aria-hidden="true">↘</span></a>
+            <a class="button secondary" href={siteConfig.links.github} target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+            <button class="button ghost" type="button" data-print>{t.hero.print}</button>
+          </div>
+        </div>
+
+        <div class="hero-visual reveal" aria-label={t.hero.role}>
+          <div class="orbit orbit-one" aria-hidden="true"></div>
+          <div class="orbit orbit-two" aria-hidden="true"></div>
+          <div class="profile-card">
+            <div class="profile-top"><span>{t.hero.profile.toUpperCase()} / 01</span><span class="live-label"><i></i> {t.hero.online.toUpperCase()}</span></div>
+            <div class="monogram" aria-hidden="true"><span>C</span><span>M</span></div>
+            <div class="profile-bottom">
+              <p>CHANGAO MA</p>
+              <span>{t.hero.role}</span>
+            </div>
+          </div>
+          <div class="floating-note note-one"><span>01</span> {t.hero.noteBuild.toUpperCase()}</div>
+          <div class="floating-note note-two"><span>02</span> {t.hero.noteVerify.toUpperCase()}</div>
+        </div>
+      </section>
+
+      <section class="section shell" id="about" aria-labelledby="about-title">
+        <div class="section-label"><span>01</span><span>{t.about.label}</span></div>
+        <div class="about-grid">
+          <div class="section-heading reveal">
+            <p class="kicker">{t.about.kicker.toUpperCase()}</p>
+            <h2 id="about-title">{t.about.title[0]}<br />{t.about.title[1]}</h2>
+          </div>
+          <div class="about-copy reveal">
+            {t.about.paragraphs.map((paragraph) => <p>{paragraph}</p>)}
+          </div>
+        </div>
+        <div class="skill-cloud reveal" aria-label="Technical skills">
+          {siteConfig.skills.map((skill, index) => <span><i>{String(index + 1).padStart(2, "0")}</i>{skill}</span>)}
+        </div>
+      </section>
+
+      <section class="section shell" id="work" aria-labelledby="work-title">
+        <div class="section-label"><span>02</span><span>{t.work.label}</span></div>
+        <div class="work-header reveal">
+          <div>
+            <p class="kicker">{t.work.kicker.toUpperCase()}</p>
+            <h2 id="work-title">{t.work.title}</h2>
+          </div>
+          <div class="filters" aria-label={t.work.label}>
+            <button class="filter active" type="button" data-filter="all" aria-pressed="true">{t.work.filters.all}</button>
+            <button class="filter" type="button" data-filter="open-source" aria-pressed="false">{t.work.filters.openSource}</button>
+            <button class="filter" type="button" data-filter="platform" aria-pressed="false">{t.work.filters.platform}</button>
+            <button class="filter" type="button" data-filter="lab" aria-pressed="false">{t.work.filters.lab}</button>
+          </div>
+        </div>
+        <div class="project-grid">
+          {siteConfig.projects.map((project, index) => (
+            <article class:list={["project-card", "reveal", project.featured && "featured"]} data-project-kind={project.kind}>
+              <a href={project.href} target="_blank" rel="noreferrer" aria-label={"Open " + project.title}>
+                <div class="project-meta"><span>{String(index + 1).padStart(2, "0")} / {project.kind.toUpperCase()}</span><span aria-hidden="true">↗</span></div>
+                <div class="project-mark" aria-hidden="true">{project.title.slice(0, 2).toUpperCase()}</div>
+                <div class="project-copy">
+                  <p>{project.eyebrow}</p>
+                  <h3>{project.title}</h3>
+                  <span>{t.work.descriptions[index]}</span>
+                </div>
+              </a>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section class="section shell" id="approach" aria-labelledby="approach-title">
+        <div class="section-label"><span>03</span><span>{t.approach.label}</span></div>
+        <div class="approach-grid">
+          <div class="section-heading reveal">
+            <p class="kicker">{t.approach.kicker.toUpperCase()}</p>
+            <h2 id="approach-title">{t.approach.title[0]}<br />{t.approach.title[1]}</h2>
+          </div>
+          <ol class="principles reveal">
+            {t.approach.principles.map((principle, index) => (
+              <li><span>{String(index + 1).padStart(2, "0")}</span><div><h3>{principle.title}</h3><p>{principle.text}</p></div></li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      <section class="contact shell" id="contact" aria-labelledby="contact-title">
+        <p class="kicker">{t.contact.kicker.toUpperCase()}</p>
+        <h2 id="contact-title">{t.contact.title}</h2>
+        <p>{t.contact.text}</p>
+        <div class="contact-links">
+          <a href={siteConfig.links.contact}>{t.nav.contact} <span aria-hidden="true">↗</span></a>
+          <a href={siteConfig.links.github} target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+          <a href={siteConfig.links.blog} target="_blank" rel="noreferrer">Blog <span aria-hidden="true">↗</span></a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer shell">
+      <p>© {year} CHANGAO MA</p>
+      <p>{t.footer}</p>
+      <p>{t.attribution}: <a href="https://github.com/RyanFitzgerald/devportfolio" target="_blank" rel="noreferrer">DevPortfolio</a> · MIT</p>
+    </footer>
+
+    <dialog class="mobile-dialog" id="mobile-menu" aria-label={t.controls.menuOpen}>
+      <button class="dialog-close" type="button" data-menu-close aria-label={t.controls.menuClose}>×</button>
+      <nav>
+        <a href="#about" data-menu-link><span>01</span><span>{t.nav.about}</span></a>
+        <a href="#work" data-menu-link><span>02</span><span>{t.nav.work}</span></a>
+        <a href="#approach" data-menu-link><span>03</span><span>{t.nav.approach}</span></a>
+        <a href="#contact" data-menu-link><span>04</span><span>{t.nav.contact}</span></a>
+      </nav>
+    </dialog>
+
+    <dialog class="command-dialog" id="command-palette" aria-labelledby="command-title">
+      <div class="command-head"><span id="command-title">{t.command.title}</span><kbd>ESC</kbd></div>
+      <div class="command-list">
+        <a href="#work" data-command-link><span>↘</span><span>{t.command.work}</span><kbd>01</kbd></a>
+        <a href={siteConfig.links.github} target="_blank" rel="noreferrer"><span>↗</span><span>{t.command.github}</span><kbd>02</kbd></a>
+        <a href={siteConfig.links.blog} target="_blank" rel="noreferrer"><span>↗</span><span>{t.command.blog}</span><kbd>03</kbd></a>
+        <button type="button" data-command-print><span>⎙</span><span>{t.command.print}</span><kbd>04</kbd></button>
+        <button type="button" data-command-copy data-copied={t.command.copied}><span>⌁</span><span data-copy-label>{t.command.copy}</span><kbd>05</kbd></button>
+      </div>
+    </dialog>
+
+    <script>
+      const root = document.documentElement;
+      root.classList.add("js");
+      const safeStorage = {
+        get(key: string) { try { return localStorage.getItem(key); } catch { return null; } },
+        set(key: string, value: string) { try { localStorage.setItem(key, value); } catch {} },
+      };
+
+      const savedTheme = safeStorage.get("cv-theme");
+      if (savedTheme === "light" || savedTheme === "dark") root.dataset.theme = savedTheme;
+
+      const languageSelect = document.querySelector<HTMLSelectElement>("[data-language-select]");
+      languageSelect?.addEventListener("change", () => {
+        safeStorage.set("cv-locale", languageSelect.value);
+        window.location.assign(languageSelect.value);
+      });
+
+      document.querySelectorAll("[data-theme-toggle]").forEach((button) => button.addEventListener("click", () => {
+        root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+        safeStorage.set("cv-theme", root.dataset.theme);
+      }));
+
+      const mobileMenu = document.querySelector<HTMLDialogElement>("#mobile-menu");
+      const menuOpen = document.querySelector<HTMLButtonElement>("[data-menu-open]");
+      menuOpen?.addEventListener("click", () => {
+        mobileMenu?.showModal();
+        document.body.classList.add("dialog-open");
+      });
+      const closeMenu = () => {
+        mobileMenu?.close();
+        document.body.classList.remove("dialog-open");
+        requestAnimationFrame(() => menuOpen?.focus());
+      };
+      document.querySelector("[data-menu-close]")?.addEventListener("click", closeMenu);
+      mobileMenu?.addEventListener("close", () => document.body.classList.remove("dialog-open"));
+      document.querySelectorAll("[data-menu-link]").forEach((link) => link.addEventListener("click", closeMenu));
+
+      const palette = document.querySelector<HTMLDialogElement>("#command-palette");
+      const commandOpen = document.querySelector<HTMLButtonElement>("[data-command-open]");
+      const openPalette = () => {
+        palette?.showModal();
+        document.body.classList.add("dialog-open");
+      };
+      commandOpen?.addEventListener("click", openPalette);
+      palette?.addEventListener("close", () => {
+        document.body.classList.remove("dialog-open");
+        requestAnimationFrame(() => commandOpen?.focus());
+      });
+      document.addEventListener("keydown", (event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+          event.preventDefault();
+          openPalette();
+        }
+      });
+      document.querySelectorAll("[data-command-link]").forEach((link) => link.addEventListener("click", () => palette?.close()));
+
+      const printPage = () => { palette?.close(); window.print(); };
+      document.querySelector("[data-print]")?.addEventListener("click", printPage);
+      document.querySelector("[data-command-print]")?.addEventListener("click", printPage);
+      document.querySelector("[data-command-copy]")?.addEventListener("click", async (event) => {
+        await navigator.clipboard.writeText(window.location.href);
+        const button = event.currentTarget as HTMLButtonElement;
+        const label = button.querySelector("[data-copy-label]");
+        if (label) label.textContent = button.dataset.copied ?? "Copied";
+      });
+
+      document.querySelectorAll("[data-filter]").forEach((button) => button.addEventListener("click", () => {
+        const filter = button.getAttribute("data-filter");
+        document.querySelectorAll("[data-filter]").forEach((item) => {
+          item.classList.toggle("active", item === button);
+          item.setAttribute("aria-pressed", String(item === button));
+        });
+        document.querySelectorAll("[data-project-kind]").forEach((card) => {
+          card.toggleAttribute("hidden", filter !== "all" && card.getAttribute("data-project-kind") !== filter);
+        });
+      }));
+
+      const observer = new IntersectionObserver((entries) => entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("visible");
+          observer.unobserve(entry.target);
+        }
+      }), { threshold: 0.12 });
+      document.querySelectorAll(".reveal").forEach((element) => observer.observe(element));
+
+      window.addEventListener("scroll", () => {
+        document.querySelector("[data-header]")?.classList.toggle("scrolled", window.scrollY > 24);
+      }, { passive: true });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,78 @@
+services:
+  cache:
+    image: redis:7.4.0
+    restart: always
+    container_name: redis
+    command: ["bash", "-c", "mkdir -p /etc/redis-config && cp /redis.conf /etc/redis-config/redis.conf && redis-server /etc/redis-config/redis.conf"]
+    networks:
+      dnsnetwork:
+        ipv4_address: 10.5.0.10
+    ports:
+      - '6379:6379'
+    volumes:
+      - ./dev/bootstrap/redis/master/redis.conf:/redis.conf
+      - cache:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  redis_replica:
+    image: redis:7.4.0
+    restart: always
+    container_name: redis_replica
+    command: ["bash", "-c", "mkdir -p /etc/redis-config && cp /redis.conf /etc/redis-config/redis.conf && redis-server /etc/redis-config/redis.conf"]
+    networks:
+      dnsnetwork:
+        ipv4_address: 10.5.0.11
+    volumes:
+      - ./dev/bootstrap/redis/replica/replica.conf:/redis.conf
+      - ./data/replica_1:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6380", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  redis_replica_dns:
+    image: redis:7.4.0
+    restart: always
+    container_name: redis_replica_dns
+    command: ["bash", "-c", "mkdir -p /etc/redis-config && cp /redis.conf /etc/redis-config/redis.conf && redis-server /etc/redis-config/redis.conf"]
+    networks:
+      dnsnetwork:
+        ipv4_address: 10.5.0.20
+    volumes:
+      - ./dev/bootstrap/redis/replica/replica-dns.conf:/redis.conf
+      - ./data/replica_2:/data
+    depends_on:
+      - cache
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6380", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  redis_sentinel:
+    image: redis:7.4.0
+    restart: always
+    container_name: redis_sentinel
+    command: ["bash", "-c", "mkdir -p /etc/redis-config && cp /redis.conf /etc/redis-config/sentinel.conf && redis-server /etc/redis-config/sentinel.conf --sentinel"]
+    networks:
+      dnsnetwork:
+        ipv4_address: 10.5.0.21
+    volumes:
+      - ./dev/bootstrap/redis/sentinel/sentinel.conf:/redis.conf
+    depends_on:
+      - cache
+      - redis_replica
+      - redis_replica_dns
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "-a", "sentinelpass", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  cache:

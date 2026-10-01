@@ -1,0 +1,37 @@
+# Services catalog for backend E2E tests.
+# Copied from dev/bootstrap/services/catalog.yml — keep in sync.
+#
+# Test infrastructure:
+#   - svctest-google.com → 8.8.8.8 (AS15169, Google) via testhosts.txt
+#   - test.com → 104.18.74.230 (AS13335, Cloudflare, NOT in catalog)
+services:
+  - id: google
+    name: Google
+    logo_key: google
+    asns: [15169, 1026, 6432, 11344, 13949, 16550, 16591, 17346, 19425, 19448, 19527, 22577, 22859, 24424]
+    domains: [google.com, youtube.com, gmail.com, googleapis.com, gstatic.com, googlevideo.com, google-analytics.com, googleusercontent.com, googlesyndication.com, doubleclick.net, gvt1.com, gvt2.com]
+    # Test-only alias exercising the service-ID rename path (FindByID resolves an
+    # alias to its service). Blocking "google-legacy" must behave exactly like
+    # blocking "google". Do NOT "sync away" — this is a deliberate test fixture,
+    # not present in the root catalog. See test_services.py::TestServicesAliasBlocking.
+    aliases: [google-legacy]
+  - id: amazon
+    name: Amazon
+    logo_key: amazon
+    asns: [16509, 14618, 16625]
+    domains: [amazon.com, amazonaws.com, amazonvideo.com, primevideo.com, alexa.com, audible.com, goodreads.com, imdb.com, twitch.tv, whole-foods.com]
+  - id: meta
+    name: Meta (Facebook)
+    logo_key: meta
+    asns: [32934]
+    domains: [facebook.com, instagram.com, whatsapp.com, messenger.com, fb.com, fbcdn.net, fbsbx.com, threads.net]
+  - id: apple
+    name: Apple
+    logo_key: apple
+    asns: [714, 6185]
+    domains: [apple.com, icloud.com, mzstatic.com, cdn-apple.com]
+  - id: microsoft
+    name: Microsoft
+    logo_key: microsoft
+    asns: [8068, 8069, 8070, 8071, 8072, 8073, 8074, 8075]
+    domains: [microsoft.com, windows.com, office.com, office365.com, live.com, outlook.com, hotmail.com, bing.com, msn.com, xbox.com, skype.com, microsoftonline.com, windowsupdate.com]

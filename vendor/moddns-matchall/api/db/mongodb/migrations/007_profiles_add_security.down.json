@@ -1,0 +1,17 @@
+[
+  {
+    "update": "profiles",
+    "updates": [
+      {
+        "q": {},
+        "u": {
+          "$unset": {
+            "settings.security.dnssec.enabled": ""
+          }
+        },
+        "multi": true
+      }
+    ],
+    "writeConcern": { "w": "majority" }
+  }
+]

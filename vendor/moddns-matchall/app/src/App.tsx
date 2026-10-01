@@ -1,0 +1,804 @@
+import React, { Suspense, useState, useEffect, useRef, createContext, useContext, useCallback } from "react";
+import { useHeaderStackHeight } from '@/lib/useHeaderStackHeight';
+import { useScrolled } from '@/hooks/useScrolled';
+import NavigationMenu from './pages/navigation_menu/NavigationMenu';
+import { useScreenDetector } from './hooks/useScreenDetector';
+import Header from './pages/header/Header';
+import BottomNav from './components/navigation/BottomNav';
+import ConnectionStatusHeader from './pages/header/ConnectionStatusHeader';
+import { NavigationCollapseProvider, useNavigationCollapse } from "@/context/NavigationCollapseContext";
+import { lazyWithRetry } from '@/lib/lazyWithRetry';
+
+// Lazy-loaded page components (route-level code splitting)
+// Uses lazyWithRetry to handle HMR failures gracefully
+const Setup = lazyWithRetry(() => import('./pages/setup/Setup'));
+const Settings = lazyWithRetry(() => import('./pages/settings/Settings'));
+const PasswordReset = lazyWithRetry(() => import('./pages/auth/PasswordReset'));
+const PasswordResetConfirm = lazyWithRetry(() => import('./pages/auth/PasswordResetConfirm'));
+const Logs = lazyWithRetry(() => import('./pages/logs/Logs'));
+const Blocklists = lazyWithRetry(() => import('./pages/blocklists/Blocklists'));
+const CustomRules = lazyWithRetry(() => import('./pages/custom_rules/CustomRules'));
+const Login = lazyWithRetry(() => import('./pages/auth/Login'));
+const Signup = lazyWithRetry(() => import('./pages/auth/Signup'));
+const TermsOfService = lazyWithRetry(() => import('./pages/legal/TermsOfService'));
+const PrivacyPolicy = lazyWithRetry(() => import("./pages/legal/PrivacyPolicy"));
+const FAQ = lazyWithRetry(() => import("./pages/legal/FAQ"));
+const Announcements = lazyWithRetry(() => import("./pages/announcements/Announcements"));
+const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
+const AccountPreferences = lazyWithRetry(() => import('@/pages/account_preferences/Account'));
+const MobileconfigPage = lazyWithRetry(() => import('@/pages/mobileconfig/MobileconfigPage'));
+const MobileconfigDownload = lazyWithRetry(() => import('@/pages/mobileconfig/MobileconfigDownload'));
+const HomeScreen = lazyWithRetry(() => import('./pages/home/HomeScreen'));
+const Landing = lazyWithRetry(() => import('./pages/landing/Landing'));
+
+// Maps a nav route to its lazy chunk's preloader. Nav components call this on
+// hover/focus/touch so the route's JS is warm by the time the user clicks —
+// turning first-visit-per-session tab switches from "download then render" into
+// "render immediately". Keys must stay in sync with NavigationMenu/BottomNav.
+const routePreload: Partial<Record<string, () => void>> = {
+  '/setup': () => { void Setup.preload(); },
+  '/blocklists': () => { void Blocklists.preload(); },
+  '/custom-rules': () => { void CustomRules.preload(); },
+  '/query-logs': () => { void Logs.preload(); },
+  '/settings': () => { void Settings.preload(); },
+  '/account-preferences': () => { void AccountPreferences.preload(); },
+};
+
+import { createBrowserRouter, RouterProvider, Navigate, Outlet, useLoaderData, useLocation, useNavigate, redirect, ScrollRestoration } from 'react-router-dom';
+import { ThemeProvider } from "@/components/theme-provider"
+import api from "@/api/api";
+import type { ModelAccount, ModelProfile } from "@/api/client/api";
+import { AUTH_KEY } from "@/lib/consts"
+import { useAppStore } from "@/store/general"
+import { useSubscriptionGuard } from "@/hooks/useSubscriptionGuard"
+import { Toaster } from "@/components/ui/sonner"
+import { checkForAppUpdate } from "@/lib/swUpdate"
+import { ApiErrorBoundary } from "@/components/errors/ApiErrorBoundary";
+import { RouterErrorBoundary } from "@/components/errors/RouterErrorBoundary";
+import { useApiEventHandler } from "@/api/eventHandler";
+import { toast } from "sonner";
+import { authToasts } from "@/lib/authToasts";
+import { subscribe, dispatch, type AppEvent } from '@/lib/eventBus';
+
+// Desktop layout sizing constants
+const DESKTOP_CONTENT_BASE_WIDTH = 1200;
+const DESKTOP_CONTENT_MAX_WIDTH = 1360;
+const DESKTOP_CONTENT_CLAMP = `clamp(${DESKTOP_CONTENT_BASE_WIDTH}px, 76vw, ${DESKTOP_CONTENT_MAX_WIDTH}px)`;
+const ULTRAWIDE_CONTENT_MAX_WIDTH = DESKTOP_CONTENT_MAX_WIDTH;
+
+// Auth context to manage authentication state
+type AuthContextType = {
+  isAuthenticated: boolean;
+  login: (showToast?: boolean) => void;
+  logout: (toastMessage?: string, toastType?: 'success' | 'info' | 'error' | 'warning') => void;
+};
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+function useAuth() {
+  const context = useContext(AuthContext);
+  if (!context) throw new Error("useAuth must be used within AuthProvider");
+  return context;
+}
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const navigate = useNavigate();
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return localStorage.getItem(AUTH_KEY) === "true";
+  });
+
+  useEffect(() => {
+    localStorage.setItem(AUTH_KEY, isAuthenticated ? "true" : "false");
+  }, [isAuthenticated]);
+
+  // Public route predicate (keep in sync with router public section)
+  const isPublicPath = (p: string) => (
+    p === '/' ||
+    p === '/login' ||
+    p === '/signup' ||
+    p === '/tos' ||
+    p === '/privacy' ||
+    p === '/faq' ||
+    p === '/announcements' ||
+    p === '/reset-password' ||
+    p.startsWith('/reset-password/') ||
+    p.startsWith('/verify/email/') ||
+    p.startsWith('/short/')
+  );
+
+  // Universal redirect safeguard when auth state flips to false, but allow public paths
+  useEffect(() => {
+    if (!isAuthenticated) {
+      const current = window.location.pathname;
+      if (!isPublicPath(current)) {
+        navigate('/login', { replace: true });
+      }
+    }
+  }, [isAuthenticated, navigate]);
+
+  const login = (showToast: boolean = true) => {
+    setIsAuthenticated(true);
+    localStorage.setItem(AUTH_KEY, "true");
+    if (showToast) authToasts.loginSuccess();
+  };
+
+  const performLogoutSideEffects = () => {
+    localStorage.removeItem(AUTH_KEY);
+    useAppStore.getState().setAccount(null);
+    useAppStore.getState().setProfiles([]);
+    useAppStore.getState().setActiveProfile(null);
+    useAppStore.getState().setSubscriptionStatus(null);
+    useAppStore.getState().setSubscriptionType(null);
+  };
+
+  const logout = (toastMessage?: string, toastType: 'success' | 'info' | 'error' | 'warning' = 'success') => {
+    setIsAuthenticated(false);
+    performLogoutSideEffects();
+    if (toastMessage) {
+      toast[toastType](toastMessage);
+    } else {
+      authToasts.logoutSuccess();
+    }
+  };
+
+  // Subscribe to event bus for auth related forced logout events
+  useEffect(() => {
+    const unsub = subscribe((ev: AppEvent) => {
+      if (ev.type === 'auth/forceLogout' || ev.type === 'auth/sessionExpired') {
+        if (!isAuthenticated) return; // idempotent
+        setIsAuthenticated(false);
+        performLogoutSideEffects();
+        const reason = ev.type === 'auth/sessionExpired' ? 'Session expired - please log in again.' : ev.reason;
+        if (reason === 'Session expired - please log in again.') {
+          authToasts.sessionExpired();
+        } else if (reason) {
+          toast[ev.type === 'auth/forceLogout' ? (ev.toastType || 'error') : 'error'](reason);
+        } else {
+          authToasts.logoutSuccess();
+        }
+        if (window.location.pathname !== '/login') {
+          navigate('/login', { replace: true });
+        }
+      }
+    });
+    return () => { unsub(); };
+  }, [isAuthenticated, navigate]);
+
+  // Removed legacy __session_expired_flag__ flush (event bus handles timing via queue)
+
+  return (
+    <AuthContext.Provider value={{ isAuthenticated, login, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+// Treats 401/404 from an API call as a session-expiry signal.
+function isAuthExpiryError(error: unknown): boolean {
+  const err = error as Record<string, unknown>;
+  const status = (err?.response as Record<string, unknown>)?.status ?? err?.status;
+  return status === 401 || status === 404;
+}
+
+// Background refresh of account+profiles for warm-cache navigations. Updates the
+// Zustand store in place and surfaces session expiry through the same event the
+// blocking loader path uses, so a stale-cache navigation still logs the user out
+// if their session died.
+function revalidateAccountAndProfiles() {
+  void Promise.allSettled([
+    api.Client.accountsApi.apiV1AccountsCurrentGet(),
+    api.Client.profilesApi.apiV1ProfilesGet(),
+  ]).then(([accountResult, profilesResult]) => {
+    const { setAccount, setProfiles, restoreActiveProfile } = useAppStore.getState();
+    if (accountResult.status === 'fulfilled') {
+      setAccount(accountResult.value.data as ModelAccount);
+    }
+    if (profilesResult.status === 'fulfilled') {
+      const profiles = profilesResult.value.data as ModelProfile[];
+      setProfiles(profiles);
+      restoreActiveProfile(profiles);
+    }
+    // A 401/404 from EITHER call means the session died — surface it once so a
+    // warm-cache navigation still logs the user out even if only the profiles
+    // call failed. (A 403 from /profiles in pending_delete state is intentionally
+    // not treated as expiry by isAuthExpiryError, so it won't trip this.)
+    const sessionExpired =
+      (accountResult.status === 'rejected' && isAuthExpiryError(accountResult.reason)) ||
+      (profilesResult.status === 'rejected' && isAuthExpiryError(profilesResult.reason));
+    if (sessionExpired) {
+      dispatch({ type: 'auth/sessionExpired' });
+    }
+  });
+}
+
+// Loader for protected routes that need both account and profiles data
+async function rootLoader() {
+  try {
+    // Check if user is authenticated before making API calls
+    const authToken = localStorage.getItem(AUTH_KEY);
+    if (!authToken || authToken !== "true") {
+      // If no auth token, redirect to login instead of making API calls
+      throw redirect("/login");
+    }
+
+    // Render-from-cache: on a warm client navigation (store already hydrated by
+    // a prior load), return the cached data synchronously and revalidate in the
+    // background. This removes the blocking account+profiles round-trip from
+    // every tab switch — the fetch below only runs on cold start / hard reload,
+    // where account/profiles are not persisted and the store is empty.
+    if (typeof window !== "undefined") {
+      const cached = useAppStore.getState();
+      if (cached.account && cached.profiles.length > 0) {
+        revalidateAccountAndProfiles();
+        return { account: cached.account, profiles: cached.profiles };
+      }
+    }
+
+    // Use allSettled so a partial failure (e.g. /profiles returning 403 in a
+    // cut-off state — inactive or pending_delete — where /accounts/current is
+    // still allowlisted by the server's subscription guard) does not collapse
+    // the whole loader. Without this, the AccountInfoCard on /account-preferences
+    // would lose `account.email` (the modDNS ID) and render an empty value.
+    const [accountResult, profilesResult] = await Promise.allSettled([
+      api.Client.accountsApi.apiV1AccountsCurrentGet(),
+      api.Client.profilesApi.apiV1ProfilesGet(),
+    ]);
+
+    // Account is the load-bearing fetch — if it fails, fall through to the
+    // shared catch handler so 401/404/429 are surfaced exactly as before.
+    if (accountResult.status === 'rejected') {
+      throw accountResult.reason;
+    }
+
+    const account = accountResult.value.data as ModelAccount;
+    // Profiles is best-effort: a non-200 (e.g. 403 in PD) leaves the user with
+    // an empty profile list rather than a broken account-preferences screen.
+    const profiles: ModelProfile[] = profilesResult.status === 'fulfilled'
+      ? (profilesResult.value.data as ModelProfile[])
+      : [];
+
+    // This will run on the client, so we can update the store here:
+    if (typeof window !== "undefined") {
+      const { setAccount, setProfiles, restoreActiveProfile } = useAppStore.getState();
+      setAccount(account);
+      setProfiles(profiles);
+      // Restore the previously selected profile or set the first one
+      restoreActiveProfile(profiles);
+    }
+
+    return {
+      account,
+      profiles,
+    };
+  } catch (error: unknown) {
+
+
+
+
+    if (error instanceof Response) throw error;
+    const err = error as Record<string, unknown>;
+    const status = (err?.response as Record<string, unknown>)?.status ?? err?.status ?? (error instanceof Error && (error as Record<string, unknown>).status);
+    if (status === 401 || status === 404) {
+      // Dispatch a unified session expired event; AuthProvider subscriber performs cleanup + toast
+      if (typeof window !== 'undefined') {
+        dispatch({ type: 'auth/sessionExpired' });
+      }
+      throw redirect('/login');
+    }
+    if (status === 429) {
+      if (typeof window !== 'undefined') {
+        setTimeout(() => toast.error('Too many requests. Some features may be temporarily unavailable.'), 100);
+      }
+      return { account: null, profiles: [] };
+    }
+    console.error('Root loader error (unhandled):', error);
+    return { account: null, profiles: [] };
+  }
+}
+
+// Lighter loader for pages that only need profiles data (no account data needed)
+async function profilesOnlyLoader() {
+  try {
+    // Check if user is authenticated before making API calls
+    const authToken = localStorage.getItem(AUTH_KEY);
+    if (!authToken || authToken !== "true") {
+      // If no auth token, redirect to login instead of making API calls
+      throw redirect("/login");
+    }
+
+    // Render-from-cache: serve the hydrated store synchronously on warm
+    // navigations and revalidate profiles in the background (see rootLoader).
+    if (typeof window !== "undefined") {
+      const cached = useAppStore.getState();
+      if (cached.profiles.length > 0) {
+        void api.Client.profilesApi.apiV1ProfilesGet()
+          .then((res) => {
+            const { setProfiles, restoreActiveProfile } = useAppStore.getState();
+            const fresh = res.data as ModelProfile[];
+            setProfiles(fresh);
+            restoreActiveProfile(fresh);
+          })
+          .catch((e) => { if (isAuthExpiryError(e)) dispatch({ type: 'auth/sessionExpired' }); });
+        return { account: null, profiles: cached.profiles };
+      }
+    }
+
+    const profilesRes = await api.Client.profilesApi.apiV1ProfilesGet();
+
+    // Save to Zustand store
+    const profiles = profilesRes.data as ModelProfile[];
+
+    // This will run on the client, so we can update the store here:
+    if (typeof window !== "undefined") {
+      const { setProfiles, restoreActiveProfile } = useAppStore.getState();
+      setProfiles(profiles);
+      // Restore the previously selected profile or set the first one
+      restoreActiveProfile(profiles);
+    }
+
+    return {
+      account: null,
+      profiles,
+    };
+  } catch (error: unknown) {
+    if (error instanceof Response) throw error;
+    const err = error as Record<string, unknown>;
+    const status = (err?.response as Record<string, unknown>)?.status ?? err?.status ?? (error instanceof Error && (error as Record<string, unknown>).status);
+    if (status === 401 || status === 404) {
+      if (typeof window !== 'undefined') {
+        dispatch({ type: 'auth/sessionExpired' });
+      }
+      throw redirect('/login');
+    }
+    if (status === 429) {
+      if (typeof window !== 'undefined') {
+        setTimeout(() => toast.error('Too many requests. Some features may be temporarily unavailable.'), 100);
+      }
+      return { account: null, profiles: [] };
+    }
+    console.error('Profiles loader error (unhandled):', error);
+    return { account: null, profiles: [] };
+  }
+}
+
+// Unified base layout for public/protected wrappers
+function BaseLayout({ children, mode }: { children: React.ReactNode, mode: 'public' | 'app' }) {
+  // overflow-x-clip, not -hidden: `hidden` computes overflow-y:auto and turns the
+  // wrapper into a scroll container nested inside the viewport scroller.
+  const baseClasses = 'relative flex flex-col min-h-screen overflow-x-clip bg-[var(--shadcn-ui-app-background)]';
+  if (mode === 'public') {
+    return (
+      <div data-testid="public-layout" className={baseClasses + ' w-full'} style={{ width: '100vw', maxWidth: '100vw' }}>
+        {children}
+      </div>
+    );
+  }
+  return (
+    // flex-col so the mobile sticky header and app-content stack in flow.
+    // overflow-x-clip, NOT -hidden: `hidden` computes overflow-y:auto and turns
+    // this into a scroll container, which silently breaks position:sticky.
+    <div className={'flex flex-col w-full min-h-screen overflow-x-clip bg-[var(--shadcn-ui-app-background)]'}>
+      {children}
+    </div>
+  );
+}
+
+// Backwards compatibility components (can be removed after updates)
+const AppLayout = ({ children }: { children: React.ReactNode }) => <BaseLayout mode='app'>{children}</BaseLayout>;
+const PublicLayout = ({ children }: { children: React.ReactNode }) => <BaseLayout mode='public'>{children}</BaseLayout>;
+
+// Route guard: redirect all protected routes to /account-preferences when the
+// account is cut off (inactive or pending_delete). Fetches subscription status
+// on mount if not yet in the store (e.g. after fresh login).
+function AccountCutoffGuard() {
+  const { isCutOff } = useSubscriptionGuard();
+  const subscriptionStatus = useAppStore(s => s.subscriptionStatus);
+  const setSubscriptionStatus = useAppStore(s => s.setSubscriptionStatus);
+  const setSubscriptionType = useAppStore(s => s.setSubscriptionType);
+  const setSubscriptionDeletionScheduled = useAppStore(s => s.setSubscriptionDeletionScheduled);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (subscriptionStatus !== null) return;
+    api.Client.subscriptionApi.apiV1SubGet()
+      .then(res => {
+        setSubscriptionStatus(res.data.status ?? null);
+        setSubscriptionType(res.data.type ?? null);
+        setSubscriptionDeletionScheduled(!!res.data.deletion_scheduled_at);
+      })
+      .catch(() => { }); // no subscription = no restriction
+  }, [subscriptionStatus, setSubscriptionStatus, setSubscriptionType, setSubscriptionDeletionScheduled]);
+
+  useEffect(() => {
+    if (isCutOff && location.pathname !== '/account-preferences') {
+      navigate('/account-preferences', { replace: true });
+    }
+  }, [isCutOff, location.pathname, navigate]);
+
+  return null;
+}
+
+// Layout for protected routes
+function ProtectedLayout() {
+  const { isAuthenticated } = useAuth();
+  const { collapsed } = useNavigationCollapse();
+  const rightPanelOpen = useAppStore((state) => state.rightPanelOpen);
+  const setRightPanelOpen = useAppStore((state) => state.setRightPanelOpen);
+  const connectionStatusVisible = useAppStore((state) => state.connectionStatusVisible);
+  const setConnectionStatusVisible = useAppStore((state) => state.setConnectionStatusVisible);
+  const profiles = useAppStore((state) => state.profiles);
+  const location = useLocation();
+  // Cut-off subscriptions (inactive or pending_delete) are no longer entitled to
+  // DNS service — the connection-status surface (live header bar + "DNS Status"
+  // toggle button) is hidden/disabled so the (now stopped) connection test does
+  // not run and the UI does not advertise functionality the user has lost.
+  const { isCutOff } = useSubscriptionGuard();
+  const { isDesktop, navDesktop, width: viewportWidth } = useScreenDetector();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const handleMoreClick = useCallback(() => setMobileNavOpen(true), []);
+
+  const connectionHeaderRef = useRef<HTMLDivElement | null>(null);
+  const mainHeaderRef = useRef<HTMLDivElement | null>(null);
+  // Desktop-only consumption: the fixed desktop header needs a measured content
+  // offset (--app-header-stack, tightened by reducePx). Mobile uses a sticky
+  // in-flow header and no longer reads the variable.
+  useHeaderStackHeight([connectionHeaderRef, mainHeaderRef], { reducePx: 30 });
+  const scrolled = useScrolled();
+
+  useEffect(() => {
+    if (rightPanelOpen && location.pathname !== '/setup') {
+      setRightPanelOpen(false);
+    }
+  }, [location.pathname, rightPanelOpen, setRightPanelOpen]);
+
+  const localAuthed = typeof window !== 'undefined' ? localStorage.getItem(AUTH_KEY) === 'true' : isAuthenticated;
+
+  useEffect(() => {
+    const revalidate = () => { };
+    window.addEventListener('auth:logout', revalidate);
+    window.addEventListener('storage', (e) => { if (e.key === AUTH_KEY) revalidate(); });
+    return () => {
+      window.removeEventListener('auth:logout', revalidate);
+    };
+  }, []);
+
+  if (!isAuthenticated || !localAuthed) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (location.pathname === "/") {
+    return <Navigate to="/home" replace />;
+  }
+
+  const showDialogTrigger = location.pathname === '/blocklists';
+  const showProfileDropdown = location.pathname !== '/home' && location.pathname !== '/account-preferences';
+  const showLogoutButton = location.pathname === '/account-preferences';
+
+  const getCurrentPageName = () => {
+    switch (location.pathname) {
+      case '/home':
+        return '';
+      case '/setup':
+        return '';
+      case '/blocklists':
+        return 'Blocklists';
+      case '/custom-rules':
+        return 'Custom rules';
+      case '/settings':
+        return 'Settings';
+      case '/query-logs':
+        return 'Logs';
+      case '/account-preferences':
+        return 'Account preferences';
+      case '/mobileconfig':
+        return 'Mobile configuration';
+      default:
+        if (location.pathname.startsWith('/setup/')) return 'DNS Setup';
+        if (location.pathname.startsWith('/blocklists/')) return 'Blocklists';
+        if (location.pathname.startsWith('/custom-rules/')) return 'Custom rules';
+        if (location.pathname.startsWith('/settings/')) return 'Settings';
+        if (location.pathname.startsWith('/query-logs/')) return 'Logs';
+        if (location.pathname.startsWith('/account-preferences/')) return 'Account';
+        if (location.pathname.startsWith('/mobileconfig/')) return 'Mobile configuration';
+        return 'Dashboard';
+    }
+  };
+
+  const currentPageName = getCurrentPageName();
+  const sidebarWidth = navDesktop ? (collapsed ? 64 : 220) : 0;
+  const rightPanelWidth = 600;
+  const headerRightOffset = rightPanelOpen ? rightPanelWidth : 0;
+  const shouldRenderConnectionHeader = isDesktop && connectionStatusVisible && !isCutOff;
+  const headerTopOffset = shouldRenderConnectionHeader ? 48 : 0;
+  // When cut off the button is rendered but visually disabled (see Header.tsx);
+  // otherwise it appears only while the header is hidden, as before.
+  const shouldShowConnectionStatusRestore = isDesktop && (isCutOff || !connectionStatusVisible);
+
+  const shellOffset = isDesktop && viewportWidth >= 1400
+    ? Math.max((viewportWidth - (sidebarWidth + ULTRAWIDE_CONTENT_MAX_WIDTH)) / 2, 0)
+    : 0;
+
+  // On non-desktop (tablets in landscape), cap content width so mx-auto centers it
+  const contentMaxWidth = isDesktop ? DESKTOP_CONTENT_CLAMP : 'min(100%, 1080px)';
+
+  return (
+    <>
+      <AppLayout>
+        <AccountCutoffGuard />
+        {navDesktop && <div data-testid="persistent-sidebar"><NavigationMenu offsetLeft={shellOffset} /></div>}
+
+        {shouldRenderConnectionHeader && (
+          <div
+            ref={connectionHeaderRef}
+            className="fixed top-0 z-50 transition-all duration-500"
+            // Size by width off 100vw (matching app-content) rather than anchoring with
+            // `right`, so a classic scrollbar appearing doesn't shift the header (GH #118).
+            style={{ left: `${sidebarWidth + shellOffset}px`, width: `calc(100vw - ${sidebarWidth + shellOffset}px - ${headerRightOffset + shellOffset}px)` }}
+          >
+            <div className="mx-auto w-full px-4 sm:px-6 lg:px-8" style={{ maxWidth: contentMaxWidth }}>
+              <ConnectionStatusHeader />
+            </div>
+          </div>
+        )}
+
+        {/* On mobile /home every header element is hidden (logo, profile
+            dropdown, page title) — skip the whole bar instead of showing an
+            empty sticky band. Desktop always renders its header. */}
+        {(isDesktop || location.pathname !== '/home') && <div
+          ref={mainHeaderRef}
+          data-testid="app-header-wrapper"
+          // Desktop: fixed, and only its geometry changes (sidebar collapse,
+          // connection-header toggle) animate.
+          // Mobile (#121): sticky in-flow with an edge-to-edge opaque surface —
+          // the content offset is layout-native, so Android URL-bar reflows can
+          // never open a gap. The boundary (hairline + soft shadow, theme-aware)
+          // materializes only while scrolled; geometry is never animated.
+          className={isDesktop
+            ? 'fixed z-50 transition-[top,left,width] duration-500'
+            : `sticky top-0 z-50 w-full bg-[var(--shadcn-ui-app-background)] border-b transition-[border-color,box-shadow] duration-200 ${scrolled
+              ? 'border-border shadow-[0_2px_8px_-2px_rgba(0,0,0,0.10)] dark:shadow-none'
+              : 'border-transparent'}`}
+          // Desktop: size by width off 100vw (matching app-content) rather than anchoring
+          // with `right`, so a classic scrollbar appearing doesn't shift the header (#118).
+          style={isDesktop ? {
+            top: `${headerTopOffset}px`,
+            left: `${sidebarWidth + shellOffset}px`,
+            width: `calc(100vw - ${sidebarWidth + shellOffset}px - ${headerRightOffset + shellOffset}px)`
+          } : undefined}
+        >
+          <div className="mx-auto w-full px-4 sm:px-6 lg:px-8" style={{ maxWidth: contentMaxWidth }}>
+            <Header
+              profiles={profiles || []}
+              showProfileDropdown={showProfileDropdown}
+              showLogoutButton={showLogoutButton}
+              showDialogTrigger={showDialogTrigger}
+              currentPageName={currentPageName}
+              showConnectionStatusRestoreButton={shouldShowConnectionStatusRestore}
+              connectionStatusRestoreDisabled={isCutOff}
+              onRestoreConnectionStatus={() => setConnectionStatusVisible(true)}
+            />
+          </div>
+        </div>}
+
+        <div
+          data-testid="app-content"
+          // The transition is desktop-only: on mobile `transition-all` would
+          // animate 100dvh-driven size changes during Android URL-bar collapse
+          // (same bug class as the old header wrapper transition, #121).
+          // Mobile top offset comes from the sticky in-flow header; flex-1
+          // (BaseLayout is flex-col) replaces the old measured minHeight.
+          // overflow-x-clip, NOT -hidden: `hidden` computes overflow-y:auto and turns
+          // this into a scroll container, which silently breaks position:sticky in
+          // every page below (e.g. the logs sticky filter bar).
+          className={`bg-[var(--shadcn-ui-app-background)] w-full overflow-x-clip box-border ${isDesktop ? 'transition-all duration-200' : 'flex-1'}`}
+          style={isDesktop ? {
+            paddingTop: 'var(--app-header-stack, 64px)',
+            marginLeft: `${sidebarWidth + shellOffset}px`,
+            width: `calc(100vw - ${sidebarWidth + shellOffset}px - ${headerRightOffset + shellOffset}px)`,
+            minHeight: 'calc(100vh - (var(--app-header-stack, 64px)))',
+            maxWidth: '100vw'
+          } : {
+            paddingBottom: 'calc(72px + env(safe-area-inset-bottom, 0px))',
+            paddingLeft: '0px',
+            marginLeft: '0px',
+            width: '100%',
+            maxWidth: '100vw'
+          }}
+        >
+          <div className="mx-auto w-full px-4 sm:px-6 lg:px-8" style={{ maxWidth: contentMaxWidth }}>
+            <Outlet />
+          </div>
+        </div>
+
+        {!navDesktop && <BottomNav onMoreClick={handleMoreClick} />}
+      </AppLayout>
+
+      {/* Mobile nav overlay – rendered outside AppLayout to avoid stacking context / overflow issues */}
+      {!navDesktop && (
+        <div className={`fixed inset-0 z-[100] ${mobileNavOpen ? '' : 'pointer-events-none'}`} data-testid="nav-overlay-wrapper">
+          <div
+            data-testid="nav-backdrop"
+            className={`fixed inset-0 bg-black/50 cursor-pointer transition-opacity duration-300 ${mobileNavOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+            onClick={() => setMobileNavOpen(false)}
+          />
+          <div
+            className={`fixed inset-y-0 left-0 w-[80%] max-w-[320px] bg-[var(--variable-collection-surface)] shadow-lg transition-transform duration-300 ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}
+            data-testid="nav-overlay-panel"
+          >
+            <NavigationMenu isMobile={true} onClose={() => setMobileNavOpen(false)} />
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function RootIndexRedirect() {
+  // The public landing page is the canonical face of `/` for everyone —
+  // authenticated visitors see it too. The auth check below is read at the
+  // routing layer (with the localStorage belt-and-braces guard against stale
+  // React state vs. localStorage drift) and passed down so Landing can swap
+  // [01 LOGIN] for [01 DASHBOARD]. Landing itself stays a "dumb" component.
+  //
+  // The function name is kept for backwards-compat with the existing
+  // unit/e2e tests and the `export { RootIndexRedirect }` at the bottom of
+  // this file; it no longer actually redirects.
+  const { isAuthenticated } = useAuth();
+  const localAuthed = typeof window !== 'undefined' ? localStorage.getItem(AUTH_KEY) === 'true' : isAuthenticated;
+  const authed = isAuthenticated && localAuthed;
+  return <Suspense fallback={<div />}><Landing isAuthenticated={authed} /></Suspense>;
+}
+
+function SetupWithLoader() {
+  const { account, profiles } = useLoaderData() as { account: ModelAccount | null, profiles: ModelProfile[] };
+  return <Suspense fallback={<div />}><Setup account={account as ModelAccount} profiles={profiles} /></Suspense>;
+}
+
+function SettingsWithLoader() {
+  const { profiles } = useLoaderData() as { account: ModelAccount | null, profiles: ModelProfile[] };
+  return <Suspense fallback={<div />}><Settings profiles={profiles} /></Suspense>;
+}
+
+function BlocklistsWithLoader() {
+  return <Suspense fallback={<div />}><Blocklists /></Suspense>;
+}
+
+function CustomRulesWithLoader() {
+  const { profiles } = useLoaderData() as { account: ModelAccount | null, profiles: ModelProfile[] };
+  return <Suspense fallback={<div />}><CustomRules profiles={profiles} /></Suspense>;
+}
+
+function AccountPreferencesWithLoader() {
+  const { account } = useLoaderData() as { account: ModelAccount | null };
+  return <Suspense fallback={<div />}><AccountPreferences account={account} /></Suspense>;
+}
+
+function MobileconfigWithLoader() {
+  return <Suspense fallback={<div />}><MobileconfigPage /></Suspense>;
+}
+
+function QueryLogsWithLoader() {
+  const { account, profiles } = useLoaderData() as { account: ModelAccount | null, profiles: ModelProfile[] };
+  return <Suspense fallback={<div />}><Logs account={account as ModelAccount} profiles={profiles} /></Suspense>;
+}
+
+// LoginWrapper handles login and redirects after success
+function LoginWrapper() {
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+  const from = (location.state as Record<string, unknown>)?.from as Record<string, unknown> | undefined;
+  const fromPath = from?.pathname as string || "/home";
+
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      navigate("/home", { replace: true });
+    }
+  }, [isAuthenticated, navigate, fromPath]);
+
+  // Always render the Login component to avoid black screen issues
+  // The redirect will happen in useEffect when authentication state updates
+  return <Suspense fallback={<div />}><Login /></Suspense>;
+}
+
+// Component that handles API events inside Router context
+// Dedicated mount component so event handler has access to AuthContext (order matters)
+function EventHandlerMount() {
+  useApiEventHandler();
+  return null;
+}
+
+// SPA navigations trigger a throttled deploy-freshness check (issue #631) so
+// active users see the update toast within ~a minute instead of the 15-minute
+// poll interval. Needs Router context for useLocation.
+function SWUpdateNavigationCheck() {
+  const location = useLocation();
+  useEffect(() => {
+    checkForAppUpdate();
+  }, [location.pathname]);
+  return null;
+}
+
+function AppWithEventHandler() {
+  return (
+    <>
+      <ScrollRestoration />
+      <SWUpdateNavigationCheck />
+      <Toaster />
+      <AuthProvider>
+        <NavigationCollapseProvider>
+          <EventHandlerMount />
+          <Outlet />
+        </NavigationCollapseProvider>
+      </AuthProvider>
+    </>
+  );
+}
+
+// Define routes with proper separation
+// Public routes are now grouped under a single PublicLayout parent to avoid remount flicker.
+const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <AppWithEventHandler />,
+    errorElement: <RouterErrorBoundary />,
+    children: [
+      { index: true, element: <RootIndexRedirect /> },
+      // PUBLIC ROUTES (grouped under one persistent layout to reduce white flicker between transitions)
+      {
+        path: "",
+        element: <PublicLayout><Outlet /></PublicLayout>,
+        children: [
+          { path: "login", element: <LoginWrapper /> },
+          { path: "signup", element: <Suspense fallback={<div />}><Signup /></Suspense> },
+          { path: "tos", element: <Suspense fallback={<div />}><TermsOfService /></Suspense> },
+          { path: "privacy", element: <Suspense fallback={<div />}><PrivacyPolicy /></Suspense> },
+          { path: "faq", element: <Suspense fallback={<div />}><FAQ /></Suspense> },
+          { path: "announcements", element: <Suspense fallback={<div />}><Announcements /></Suspense> },
+          { path: "reset-password", element: <Suspense fallback={<div />}><PasswordReset /></Suspense> },
+          { path: "reset-password/:token", element: <Suspense fallback={<div />}><PasswordResetConfirm /></Suspense> },
+          { path: "short/:code", element: <Suspense fallback={<div />}><MobileconfigDownload /></Suspense> },
+        ]
+      },
+
+      // PROTECTED ROUTES (authentication required)
+      {
+        path: "/",
+        element: <ProtectedLayout />,
+        errorElement: <RouterErrorBoundary />, // Protected route errors
+        children: [
+          { loader: rootLoader, path: "home", element: <Suspense fallback={<div />}><HomeScreen /></Suspense> },
+          { loader: rootLoader, path: "setup", element: <SetupWithLoader /> },
+          { loader: rootLoader, path: "settings", element: <SettingsWithLoader /> },
+          { loader: profilesOnlyLoader, path: "blocklists", element: <BlocklistsWithLoader /> },
+          { loader: rootLoader, path: "custom-rules", element: <CustomRulesWithLoader /> },
+          { loader: rootLoader, path: "account-preferences", element: <AccountPreferencesWithLoader /> },
+          { loader: rootLoader, path: "mobileconfig", element: <MobileconfigWithLoader /> },
+          { loader: rootLoader, path: "query-logs", element: <QueryLogsWithLoader /> },
+        ],
+      },
+
+      // 404 CATCH-ALL for any unmatched routes (within first-level children)
+      { path: "*", element: <Suspense fallback={<div />}><NotFound /></Suspense> },
+    ],
+  },
+  // Global catch-all (extra safety) - can be retained or removed
+  { path: "*", element: <Suspense fallback={<div />}><NotFound /></Suspense> },
+]);
+
+function App() {
+  // Note: data-shadcn-ui-mode attribute is now managed by ThemeProvider
+  // to sync with the current theme selection
+
+  return (
+    <ApiErrorBoundary>
+      <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+        <RouterProvider router={router} />
+      </ThemeProvider>
+    </ApiErrorBoundary>
+  );
+}
+
+
+export default App;
+// eslint-disable-next-line react-refresh/only-export-components
+export { useAuth, AuthContext, RootIndexRedirect, routePreload };

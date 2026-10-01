@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420">
+  <defs><linearGradient id="g" x1="60" y1="40" x2="580" y2="380" gradientUnits="userSpaceOnUse"><stop stop-color="#67dcff"/><stop offset=".52" stop-color="#9f8cff"/><stop offset="1" stop-color="#ffbd73"/></linearGradient></defs>
+  <g fill="none" stroke="url(#g)" stroke-linecap="round">
+    <ellipse class="a" cx="330" cy="210" rx="250" ry="122" stroke-opacity=".28" stroke-dasharray="2 13"/>
+    <ellipse class="b" cx="330" cy="210" rx="184" ry="82" stroke-opacity=".2" stroke-dasharray="1 11"/>
+    <path class="c" d="M72 233c106-128 226-164 359-106 60 26 107 66 139 121" stroke-opacity=".4" stroke-dasharray="2 15"/>
+  </g>
+  <g fill="#090a0c" stroke="url(#g)"><circle cx="80" cy="227" r="8"/><circle cx="272" cy="94" r="7"/><circle cx="508" cy="139" r="9"/><circle cx="568" cy="279" r="7"/><circle cx="276" cy="332" r="8"/></g>
+  <g transform="translate(330 210)"><circle r="44" fill="#111216" stroke="url(#g)" stroke-opacity=".75"/><path d="M-14 3 0-12 14 3 0 18Z" fill="none" stroke="#eaf8ff" stroke-width="1.8"/><circle r="3.5" fill="#67dcff"/></g>
+  <style>.a,.b{transform-box:fill-box;transform-origin:center;animation:spin 30s linear infinite}.b{animation-direction:reverse;animation-duration:38s}.c{animation:dash 8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@keyframes dash{to{stroke-dashoffset:-120}}@media(prefers-reduced-motion:reduce){*{animation:none!important}}</style>
+</svg>

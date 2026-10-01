@@ -1,0 +1,55 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.secret
+*.key
+*.pem
+secrets/
+
+# Runtime data
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+data/
+!services/dns/data/
+!services/dns/data/service-catalog.json
+files/
+uploads/
+backups/
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Node and generated sites
+node_modules/
+.astro/
+.next/
+dist/
+build/
+.cache/
+coverage/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+.cursor/
+
+# Certificates and archives
+*.crt
+*.cer
+*.p12
+*.pfx
+*.tar
+*.tar.gz
+*.tgz
+*.zip

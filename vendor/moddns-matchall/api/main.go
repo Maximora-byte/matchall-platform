@@ -1,0 +1,175 @@
+package main
+
+import (
+	"context"
+	"os"
+	"time"
+
+	"github.com/ivpn/dns/api/api"
+	"github.com/ivpn/dns/api/cache"
+	"github.com/ivpn/dns/api/config"
+	"github.com/ivpn/dns/api/db/mongodb"
+	"github.com/ivpn/dns/api/internal/announcements"
+	"github.com/ivpn/dns/api/internal/cron"
+	"github.com/ivpn/dns/api/internal/email"
+	"github.com/ivpn/dns/api/internal/idgen"
+	"github.com/ivpn/dns/api/internal/middleware"
+	"github.com/ivpn/dns/api/internal/migrations"
+	"github.com/ivpn/dns/api/internal/validator"
+	"github.com/ivpn/dns/api/service"
+	libscache "github.com/ivpn/dns/libs/cache"
+	"github.com/ivpn/dns/libs/servicescatalogcache"
+	"github.com/ivpn/dns/libs/store"
+	"github.com/ivpn/dns/libs/telemetry"
+
+	"github.com/getsentry/sentry-go"
+	sentryzerolog "github.com/getsentry/sentry-go/zerolog"
+	"github.com/ivpn/dns/libs/urlshort"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+)
+
+const (
+	shortUrlTTL         = 5 * time.Minute
+	shortUrlLogInterval = 1 * time.Hour
+	// cronLockTTL is the expiry for the Redis lock that serialises cron
+	// runs across API instances. Comfortably larger than the worst-case
+	// runtime of any current job; if a holder crashes the lock is
+	// reclaimed by the next tick after at most this duration.
+	cronLockTTL = 10 * time.Minute
+)
+
+// @title           modDNS REST API
+// @version         1.0
+// @description     modDNS REST API
+func main() {
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+
+	appConfig, err := config.New()
+	if err != nil {
+		log.Panic().Err(err).Msg("Failed to read app configuration")
+	}
+	zerolog.SetGlobalLevel(appConfig.LogLevel)
+
+	sentryConfig := telemetry.Config{
+		DSN:         appConfig.Sentry.DSN,
+		Environment: appConfig.Sentry.Environment,
+		Release:     appConfig.Sentry.Release,
+	}
+
+	if err := sentry.Init(telemetry.InitOptions(sentryConfig)); err != nil {
+		log.Panic().Err(err).Msg("Failed to initialize Sentry")
+	}
+
+	// Configure Zerolog to use Sentry as a writer
+	sentryWriter, err := sentryzerolog.New(telemetry.LogWriterConfig(sentryConfig))
+	if err != nil {
+		log.Panic().Err(err).Msg("failed to create sentry writer")
+	}
+	defer func() {
+		log.Info().Msg("Flushing Sentry writer")
+		sentryWriter.Close()
+	}()
+
+	log.Logger = log.Output(zerolog.MultiLevelWriter(zerolog.ConsoleWriter{Out: os.Stderr}, sentryWriter))
+	// log.Ctx on contexts without a request logger (cron, startup) falls back
+	// to the global logger instead of zerolog's disabled default.
+	zerolog.DefaultContextLogger = &log.Logger
+
+	storeI, err := store.New(store.DbTypeMongoDb, appConfig.DB)
+	if err != nil {
+		log.Panic().Err(err).Msg("Failed to create database struct")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	db, err := mongodb.New(ctx, storeI, appConfig)
+	if err != nil {
+		log.Panic().Err(err).Msg("Failed to create MongoDB instance")
+	}
+
+	if err = db.Migrate(); err != nil {
+		log.Panic().Err(err).Msg("Failed to run migrations")
+	}
+
+	if appConfig.Service.MigrateSubscriptionUUIDSubtype {
+		migCtx, migCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		stats, migErr := migrations.MigrateSubscriptionUUIDSubtype(migCtx, storeI.GetClient(), appConfig.DB.Name)
+		migCancel()
+		if migErr != nil {
+			log.Panic().Err(migErr).Msg("Subscription UUID subtype migration failed")
+		}
+		if stats.Migrated > 0 {
+			log.Info().Int("migrated", stats.Migrated).Int("skipped", stats.Skipped).Msg("Subscription UUID subtype migration applied")
+		}
+	}
+
+	// Build a single Redis client so the cache and the cron locker share
+	// one connection pool. The locker uses SET NX EX on the same Redis to
+	// guarantee that exactly one API instance runs each cron tick.
+	redisClient, err := libscache.NewRedisClient(appConfig.Cache)
+	if err != nil {
+		log.Panic().Err(err).Msg("Failed to create Redis client")
+	}
+	cache := cache.NewRedisCacheFromClient(redisClient)
+	cronLocker := cron.NewRedisLocker(redisClient, cronLockTTL)
+
+	idGen, err := idgen.NewGenerator(idgen.TypeSqids, appConfig.API.ProfileIDMinLength)
+	if err != nil {
+		log.Panic().Err(err).Msg("Failed to create ID generator")
+	}
+
+	defer func() {
+		log.Info().Msg("Disconnecting from database")
+		if err = db.Disconnect(); err != nil {
+			log.Error().Err(err).Msg("Failed to disconnect from database")
+		}
+	}()
+
+	mailer, err := email.NewMailer(appConfig.Server.FrontendDomain, appConfig.Email.SenderType, appConfig.Email.InboxId, appConfig.Email.AuthToken)
+	if err != nil {
+		log.Panic().Err(err).Msg("Failed to create email sender")
+	}
+
+	// Create a URL shortener with a 5 minute TTL for URLs
+	shortener := urlshort.NewURLShortener(
+		urlshort.WithDefaultTTL(shortUrlTTL),
+		urlshort.WithShortLength(8),
+		urlshort.WithStatsLogging(shortUrlLogInterval),
+	)
+
+	apiValidator, err := validator.NewAPIValidator()
+	if err != nil {
+		log.Panic().Err(err).Msg("Failed to create API validator")
+	}
+
+	webAuthn, err := middleware.NewWebAuthn(*appConfig)
+	if err != nil {
+		log.Panic().Err(err).Msg("Failed to initialize WebAuthn")
+	}
+	servicesCatalog, err := servicescatalogcache.New(appConfig.Service.ServicesCatalogPath, appConfig.Service.ServicesCatalogReloadEvery)
+	if err != nil {
+		log.Panic().Err(err).Msg("Failed to initialize services catalog")
+	}
+	go servicesCatalog.Start(context.Background())
+
+	announcementsLoader, err := announcements.New(appConfig.Service.AnnouncementsURL, appConfig.Service.AnnouncementsReloadEvery)
+	if err != nil {
+		log.Panic().Err(err).Msg("Failed to initialize announcements loader")
+	}
+	go announcementsLoader.Start(context.Background())
+
+	service := service.New(*appConfig, db, cache, idGen, apiValidator, mailer, shortener, webAuthn, servicesCatalog)
+
+	server, err := api.NewServer(appConfig, service, db, cache, idGen, apiValidator, mailer, shortener, servicesCatalog, announcementsLoader)
+	if err != nil {
+		log.Panic().Err(err).Msg("Failed to create API server")
+	}
+	server.RegisterRoutes()
+
+	cron.Start(db, db, db, cache, mailer, service, cronLocker)
+
+	err = server.App.Listen(appConfig.API.Port)
+	log.Panic().Err(err).Msg("Failed to start REST API")
+}
