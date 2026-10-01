@@ -226,6 +226,10 @@ def init_notify_db():
 
 
 def enqueue_delivery_jobs(con, notification_id: int):
+    notification = con.execute("SELECT audience FROM notifications WHERE id=?", (notification_id,)).fetchone()
+    # Hub has only broad audiences; it cannot resolve private recipients.
+    if not notification or notification["audience"] not in ("users", "public"):
+        return
     now = int(time.time())
     chat_id = read_secret(TELEGRAM_CHAT_ID_FILE)
     if read_secret(TELEGRAM_BOT_TOKEN_FILE) and chat_id:
@@ -300,6 +304,7 @@ async def delivery_loop():
         with notify_db() as con:
             rows = con.execute("""SELECT j.*,n.title,n.body,n.action_url FROM delivery_jobs j
               JOIN notifications n ON n.id=j.notification_id WHERE j.status='pending' AND j.next_attempt_at<=?
+              AND n.audience IN ('users','public')
               ORDER BY j.id LIMIT 20""", (now,)).fetchall()
         for row in rows:
             try:
@@ -1114,15 +1119,23 @@ def notification_create(request: Request, csrf_token: str = Form(...), title: st
 
 @app.post("/internal/events")
 async def internal_event(request: Request):
+    secret = read_secret(EVENT_SECRET_FILE)
+    if not secret:
+        raise HTTPException(503, "Event authentication is not configured")
     raw = await request.body()
-    expected = hmac.new(read_secret(EVENT_SECRET_FILE).encode(), raw, hashlib.sha256).hexdigest()
+    expected = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
     supplied = request.headers.get("x-matchall-signature", "").removeprefix("sha256=")
-    if not expected or not secrets.compare_digest(expected, supplied):
+    if not secrets.compare_digest(expected, supplied):
         raise HTTPException(403, "Invalid signature")
     event = json.loads(raw)
+    audience = event.get("audience", "users")
+    if audience not in ("users", "public"):
+        raise HTTPException(400, "Unsupported notification audience")
+    if event.get("type") == "release.published" and event.get("visibility") == "private":
+        raise HTTPException(400, "Private release notifications are not supported")
     publish_notification(event_key=event["id"], kind=event.get("type", "event"), severity=event.get("severity", "info"),
                          title=event["title"], body=event.get("body", ""), action_url=event.get("url", ""),
-                         audience=event.get("audience", "users"))
+                         audience=audience)
     return {"accepted": True}
 
 
