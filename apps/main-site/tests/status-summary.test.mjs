@@ -89,3 +89,72 @@ test("badge expectations track the actual Hub registry", async () => {
   const keys = [...registry.matchAll(/"key": "([^"]+)"/g)].map((match) => match[1]);
   assert.deepEqual([...REQUIRED_SERVICE_KEYS].sort(), keys.sort());
 });
+
+async function badgeHarness(t, fetchImpl) {
+  const { mountStatusBadge } = await import("../public/status-summary.js");
+  const previousDocument = globalThis.document;
+  const listeners = new Map();
+  const label = { textContent: "服务状态待确认" };
+  const element = { dataset: { status: "unknown" }, querySelector: () => label };
+  globalThis.document = {
+    hidden: false,
+    addEventListener: (name, callback) => listeners.set(name, callback),
+    removeEventListener: (name) => listeners.delete(name),
+  };
+  t.mock.method(globalThis, "fetch", fetchImpl);
+  t.mock.timers.enable({ apis: ["Date", "setTimeout", "setInterval"], now: now * 1000 });
+  const dispose = mountStatusBadge(element);
+  t.after(() => { dispose(); globalThis.document = previousDocument; });
+  const settle = async () => { for (let i = 0; i < 10; i += 1) await Promise.resolve(); };
+  await settle();
+  return { element, label, settle, resume: () => listeners.get("visibilitychange")() };
+}
+
+test("mounted badge expires old probes without another HTTP response", async (t) => {
+  const data = payload();
+  data.services[0].last_checked_at = now - 179;
+  let calls = 0;
+  const { element, label } = await badgeHarness(t, async () => {
+    calls += 1;
+    return { ok: true, json: async () => data };
+  });
+  assert.equal(element.dataset.status, "operational");
+  t.mock.timers.tick(2000);
+  assert.equal(element.dataset.status, "unknown");
+  assert.equal(label.textContent, "服务状态待确认");
+  assert.equal(calls, 1);
+});
+
+test("mounted badge clears prior health on refresh failure", async (t) => {
+  let failed = false;
+  const { element, label, resume, settle } = await badgeHarness(t, async () => {
+    if (failed) throw new Error("offline");
+    return { ok: true, json: async () => payload() };
+  });
+  assert.equal(element.dataset.status, "operational");
+  failed = true;
+  resume();
+  await settle();
+  assert.equal(element.dataset.status, "unknown");
+  assert.equal(label.textContent, "服务状态待确认");
+});
+
+test("mounted badge times out and an older aborted refresh cannot overwrite the latest response", async (t) => {
+  let mode = "healthy";
+  const { element, resume, settle } = await badgeHarness(t, async (_url, options) => {
+    if (mode === "waiting") return new Promise((_resolve, reject) => {
+      options.signal.addEventListener("abort", () => reject(new Error("aborted")));
+    });
+    return { ok: true, json: async () => payload() };
+  });
+  mode = "waiting";
+  resume();
+  t.mock.timers.tick(6000);
+  await settle();
+  assert.equal(element.dataset.status, "unknown");
+  resume();
+  mode = "healthy";
+  resume();
+  await settle();
+  assert.equal(element.dataset.status, "operational");
+});
