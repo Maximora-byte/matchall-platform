@@ -120,9 +120,9 @@ class AuthBoundaryTests(unittest.TestCase):
                        for name, user in self.users.items()]
             (app.SNAPSHOT_DIR / f"{service}.json").write_text(json.dumps({"generated_at": self.now, "users": records}))
         def capture(name, request, **context):
-            if "console_services" in context:
+            if "summaries" in context:
                 records = {key: None for key in ("network", "drive", "mirrors")}
-                records.update({item["key"]: item["record"] for item in context["console_services"]})
+                records.update({item["key"]: item["record"] for item in context["summaries"]})
                 return JSONResponse(records)
             return JSONResponse({key: context[key] for key in ("network", "drive", "mirrors")})
         with patch.object(app, "render", side_effect=capture):
