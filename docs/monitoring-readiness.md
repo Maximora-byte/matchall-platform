@@ -45,7 +45,7 @@ exist. Unconfigured DNS means the overall status is not fully operational; this 
 intentional indication of missing coverage, not a DNS outage.
 
 The probe checks HTTPS status/content type, DNS transaction/question correspondence,
-NOERROR, a nonempty A answer for the queried name (following CNAMEs), and the optional
+an untruncated response, NOERROR, a nonempty A answer for the queried name (following CNAMEs), and the optional
 address allowlist. NXDOMAIN, SERVFAIL, empty or wrong answers, redirects, malformed or
 oversized responses, and timeouts fail. Without an address allowlist it verifies a
 matching DNS answer, not that an address is the intended deployment. Choose a stable,

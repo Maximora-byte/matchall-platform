@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
+import dns.flags
 import dns.message
 import dns.rcode
 import dns.rrset
@@ -66,6 +67,17 @@ class ProbeTests(unittest.IsolatedAsyncioTestCase):
             result.answer.append(dns.rrset.from_text("alias.example.", 60, "IN", "A", "192.0.2.1"))
             return httpx.Response(200, content=result.to_wire(), headers={"content-type": "application/dns-message"})
         self.assertTrue((await self.probe(answer)).ok)
+
+    async def test_truncated_flag_and_malformed_wire_fail(self):
+        def truncated(request):
+            response = self.answer(request)
+            answer = dns.message.from_wire(response.content)
+            answer.flags |= dns.flags.TC
+            return httpx.Response(200, content=answer.to_wire(), headers={"content-type": "application/dns-message"})
+        result = await self.probe(truncated)
+        self.assertEqual(result.detail, "dns_response_truncated")
+        result = await self.probe(lambda _: httpx.Response(200, content=b"invalid", headers={"content-type": "application/dns-message"}))
+        self.assertEqual(result.detail, "invalid_response")
 
     async def test_http_200_html_is_not_dns_success(self):
         result = await self.probe(lambda _: httpx.Response(200, text="healthy"))

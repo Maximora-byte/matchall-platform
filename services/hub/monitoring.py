@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 import dns.exception
+import dns.flags
 import dns.message
 import dns.name
 import dns.rcode
@@ -95,6 +96,8 @@ async def _run_probe(client: httpx.AsyncClient, spec: dict) -> ProbeResult:
                 if response.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/dns-message":
                     return ProbeResult(False, code, "unexpected_content_type")
                 answer = dns.message.from_wire(bytes(content))
+                if answer.flags & dns.flags.TC:
+                    return ProbeResult(False, code, "dns_response_truncated")
                 if not query.is_response(answer):
                     return ProbeResult(False, code, "dns_response_mismatch")
                 if answer.rcode() != dns.rcode.NOERROR:
