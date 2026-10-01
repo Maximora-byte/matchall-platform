@@ -843,7 +843,13 @@ def status_page(request: Request):
 
 
 @app.get("/api/status")
-def status_api():
+def status_api(request: Request = None):
+    # Public read-only summary: allow only the two first-party landing origins.
+    # Never enable credentialed CORS or widen access to other Hub routes.
+    headers = {"Cache-Control": "public, max-age=30", "Vary": "Origin"}
+    origin = request.headers.get("origin") if request is not None else None
+    if origin in {"https://www.maximoraverse.org", "https://maximoraverse.org"}:
+        headers["Access-Control-Allow-Origin"] = origin
     services, incidents = status_summary()
     fields = ["key", "name", "name_en", "category", "url", "status", "state", "uptime", "uptime_30d",
               "sample_count_24h", "sample_count_30d", "avg_latency", "latency_window", "last_checked_at",
@@ -853,7 +859,7 @@ def status_api():
               "maintenance_seconds_30d"]
     return JSONResponse({"schema_version": 2, "generated_at": int(time.time()), "stale_after_seconds": STALE_AFTER_SECONDS,
                          "services": [{k: x.get(k) for k in fields} for x in services], "incidents": incidents},
-                        headers={"Cache-Control": "public, max-age=30"})
+                        headers=headers)
 
 
 @app.get("/api/status/history")

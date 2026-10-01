@@ -763,7 +763,8 @@ footer {
   position: absolute;
   z-index: 8;
   right: 0;
-  width: 310px;
+  width: min(310px, calc(100vw - 48px));
+  grid-template-columns: minmax(0, 1fr);
   margin: 8px 0 0;
   padding: 12px;
   border: 1px solid var(--line);
@@ -773,8 +774,12 @@ footer {
 }
 .summary-line dl div {
   display: grid;
-  grid-template-columns: 72px 1fr;
+  grid-template-columns: 72px minmax(0, 1fr);
   gap: 8px;
+}
+.summary-line dl dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .section,
 .attention-section {
