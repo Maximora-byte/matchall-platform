@@ -13,11 +13,12 @@ import subprocess
 import threading
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, closing
 from pathlib import Path
 from urllib.parse import urlencode, urlparse
 
 import httpx
+from monitoring import dns_config, run_probe
 import markdown
 from pywebpush import webpush
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -89,6 +90,35 @@ SERVICES = [
     {"key": "mirrors", "name": "软件镜像", "name_en": "Mirrors", "category": "distribution", "url": "https://mirrors.maximoraverse.org/", "probe": "http://mirrors:8000/healthz", "expect": [200], "threshold": 900, "check_type": "应用健康端点", "scope": "验证 Mirrors 应用健康端点；不创建发布，不下载大文件，也不验证付费授权全过程。", "help_url": "https://blog.maximoraverse.org/docs/mirrors-user/"},
     {"key": "network", "name": "网络服务", "name_en": "Network", "category": "network", "url": "https://proxyservice.maximoraverse.org/", "probe": "http://xboard:7001/api/v1/guest/comm/config", "expect": [200], "threshold": 1000, "check_type": "只读公共配置 API", "scope": "验证公共配置 API 可响应；不发起购买，不验证节点连通性、订阅更新或端到端流量。", "help_url": "https://blog.maximoraverse.org/docs/network-guide/"},
 ]
+
+# Scope is machine-readable so a liveness result is never an end-to-end claim.
+for _service in SERVICES:
+    _service["coverage_level"] = "liveness" if _service["key"] in {"account", "mirrors"} else "http_reachability"
+    _service["configured"] = True
+    _service["configuration_state"] = "configured"
+    _service["business_availability"] = "not_verified"
+    if _service["key"] == "drive":
+        _service["kind"] = "nextcloud"
+        _service["coverage_level"] = "read_only_contract"
+        _service["scope"] = "验证公开状态字段 installed=true、maintenance=false、needsDbUpgrade=false；不验证登录、上传、下载或分享全过程。"
+SERVICES.append({"key": "dns", "name": "DNS 解析", "name_en": "DNS Resolution", "category": "network",
+    "url": "https://dns.maximoraverse.org/", "threshold": 1200,
+    "check_type": "DNS over HTTPS A 查询", "coverage_level": "dns_resolution",
+    "business_availability": "not_verified",
+    "scope": "仅向显式配置的公共解析器查询指定域名并校验 A 响应；未配置时未知。不覆盖账户网关、过滤策略、DoT/DoQ 或多地域可用性。",
+    "help_url": "https://docs.maximoraverse.org/",
+    **dns_config(os.getenv("MONITOR_DNS_DOH_URL", ""), os.getenv("MONITOR_DNS_DOMAIN", ""),
+                 os.getenv("MONITOR_DNS_EXPECTED_ADDRESSES", ""))})
+
+# Process-local readiness, intentionally separate from monitored service health.
+BACKGROUND_PROGRESS = {}
+BACKGROUND_TASKS = {}
+BACKGROUND_ERRORS = set()
+
+
+def mark_progress(name):
+    BACKGROUND_PROGRESS[name] = time.monotonic()
+
 
 I18N = {
     "zh": {"console": "统一用户中心", "status": "服务状态", "logout": "退出", "login": "使用 MatchAll 账户登录", "skip": "跳到主要内容", "account": "账户", "privacy": "隐私", "terms": "条款", "contact": "联系", "anon_title": "一个账户，管理全部服务。", "anon_desc": "统一查看云存储、网络套餐、软件授权和服务运行状态。Console 只读取汇总信息，不保存业务密码。", "view_status": "查看服务状态", "overall_ok": "所有服务运行正常", "overall_slow": "部分服务响应较慢", "overall_down": "部分服务暂时不可用", "status_desc": "每分钟从业务网络内部执行真实健康探测；状态需要连续两次失败才会标记为中断。", "incident_history": "事件记录", "no_incident": "暂无服务事件", "no_incident_desc": "监控开始后没有记录到连续故障。", "hours": "24小时"},
@@ -296,12 +326,14 @@ async def deliver_job(job):
 
 async def delivery_loop():
     while True:
+        mark_progress("delivery")
         now = int(time.time())
         with notify_db() as con:
             rows = con.execute("""SELECT j.*,n.title,n.body,n.action_url FROM delivery_jobs j
               JOIN notifications n ON n.id=j.notification_id WHERE j.status='pending' AND j.next_attempt_at<=?
               ORDER BY j.id LIMIT 20""", (now,)).fetchall()
         for row in rows:
+            mark_progress("delivery")
             try:
                 await deliver_job(row)
                 with notify_db() as con:
@@ -327,6 +359,8 @@ def public_status(con, service: dict, now: int | None = None):
     maintenance = active_maintenance(con, service["key"], now)
     if maintenance:
         return "maintenance", maintenance
+    if not service.get("configured", True):
+        return "unknown", None
     rows = con.execute("SELECT checked_at,ok,latency_ms,status_code,detail FROM checks WHERE service_key=? ORDER BY checked_at DESC LIMIT 3", (service["key"],)).fetchall()
     if not rows or now - int(rows[0]["checked_at"]) > STALE_AFTER_SECONDS:
         return "unknown", None
@@ -367,18 +401,13 @@ def effective_state(con, key: str):
 
 
 async def probe_once():
-    async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=8.0, trust_env=False) as client:
         for service in SERVICES:
+            if not service.get("configured", True):
+                continue
             started = time.perf_counter()
-            ok, code, detail = False, 0, ""
-            try:
-                response = await client.get(service["probe"], headers={"User-Agent": "MatchAll-Status/1.0"})
-                code = response.status_code
-                ok = code in service["expect"]
-                if not ok:
-                    detail = f"HTTP {code}"
-            except Exception as exc:
-                detail = exc.__class__.__name__
+            result = await run_probe(client, service)
+            ok, code, detail = result.ok, result.code, result.detail
             latency = max(1, int((time.perf_counter() - started) * 1000))
             now = int(time.time())
             with status_db() as con:
@@ -401,10 +430,17 @@ async def probe_once():
 
 
 async def probe_loop():
-    await probe_once()
     while True:
-        await asyncio.sleep(60)
-        await probe_once()
+        try:
+            await probe_once()
+            mark_progress("probes")
+            BACKGROUND_ERRORS.discard("probes")
+        except Exception:
+            # A DB/notification failure must not silently kill monitoring forever.
+            # Do not refresh progress until a complete successful cycle; /readyz
+            # becomes stale if failures persist. Never log endpoint/exception text.
+            BACKGROUND_ERRORS.add("probes")
+        await asyncio.sleep(PROBE_INTERVAL_SECONDS)
 
 
 @asynccontextmanager
@@ -413,13 +449,20 @@ async def lifespan(_: FastAPI):
     SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
     init_status_db()
     init_notify_db()
-    task = asyncio.create_task(probe_loop())
-    delivery_task = asyncio.create_task(delivery_loop())
+    BACKGROUND_PROGRESS.clear()
+    BACKGROUND_ERRORS.clear()
+    BACKGROUND_TASKS.update(probes=asyncio.create_task(probe_loop()),
+                            delivery=asyncio.create_task(delivery_loop()))
     try:
         yield
     finally:
-        task.cancel()
-        delivery_task.cancel()
+        tasks = list(BACKGROUND_TASKS.values())
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        BACKGROUND_TASKS.clear()
+        BACKGROUND_PROGRESS.clear()
+        BACKGROUND_ERRORS.clear()
 
 
 app = FastAPI(title="MatchAll Hub", docs_url=None, redoc_url=None, lifespan=lifespan)
@@ -694,6 +737,33 @@ def healthz():
     return {"status": "ok"}
 
 
+@app.get("/readyz")
+def readyz():
+    """Hub readiness only: not upstream business health or external reachability."""
+    reasons = []
+    now = time.monotonic()
+    for name in ("probes", "delivery"):
+        task = BACKGROUND_TASKS.get(name)
+        progress = BACKGROUND_PROGRESS.get(name)
+        if task is None or task.done():
+            reasons.append(name + "_task_stopped")
+        elif progress is None or not 0 <= now - progress <= STALE_AFTER_SECONDS:
+            reasons.append(name + "_heartbeat_stale")
+        if name in BACKGROUND_ERRORS:
+            reasons.append(name + "_cycle_failed")
+    for name, path, table in (("status", STATUS_DB, "checks"), ("notifications", NOTIFY_DB, "delivery_jobs")):
+        try:
+            with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=1)) as con:
+                con.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone()
+        except (sqlite3.Error, OSError):
+            reasons.append(name + "_database_unavailable")
+    if any(service.get("configuration_state") == "invalid" for service in SERVICES):
+        reasons.append("probe_configuration_invalid")
+    return JSONResponse({"ready": not reasons, "scope": "hub_background_tasks_and_database_reads",
+                         "reasons": reasons}, status_code=503 if reasons else 200,
+                        headers={"Cache-Control": "no-store"})
+
+
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
     return Response(content=FAVICON_SVG, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
@@ -850,7 +920,7 @@ def status_api():
               "last_success_at", "stale", "probe_region", "probe_interval_seconds", "check_type", "scope",
               "help_url", "maintenance", "successful_samples_30d", "monitoring_started_at", "coverage_start_at",
               "coverage_end_at", "expected_samples_30d", "coverage_ratio_30d", "coverage_complete_30d",
-              "maintenance_seconds_30d"]
+              "maintenance_seconds_30d", "coverage_level", "business_availability", "configured", "configuration_state"]
     return JSONResponse({"schema_version": 2, "generated_at": int(time.time()), "stale_after_seconds": STALE_AFTER_SECONDS,
                          "services": [{k: x.get(k) for k in fields} for x in services], "incidents": incidents},
                         headers={"Cache-Control": "public, max-age=30"})
