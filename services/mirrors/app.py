@@ -431,6 +431,13 @@ def init_db():
             con.execute("ALTER TABLE artifacts ADD COLUMN storage_provider TEXT NOT NULL DEFAULT 'local'")
         if "storage_key" not in artifact_columns:
             con.execute("ALTER TABLE artifacts ADD COLUMN storage_key TEXT NOT NULL DEFAULT ''")
+        order_columns = {row[1] for row in con.execute("PRAGMA table_info(orders)")}
+        if "stripe_session_id" not in order_columns:
+            con.execute("ALTER TABLE orders ADD COLUMN stripe_session_id TEXT NOT NULL DEFAULT ''")
+        # Before this column, pending orders kept the Checkout Session in
+        # provider_ref, which is replaced by the PaymentIntent after payment.
+        con.execute("""UPDATE orders SET stripe_session_id=provider_ref
+          WHERE provider='stripe' AND stripe_session_id='' AND substr(provider_ref,1,3)='cs_'""")
         count = con.execute("SELECT COUNT(*) FROM projects").fetchone()[0]
         if count == 0:
             now = int(time.time())
@@ -611,6 +618,56 @@ def revoke_order(con, order_no: str):
     now = int(time.time())
     con.execute("UPDATE orders SET status='refunded',refunded_at=? WHERE order_no=?", (now, order_no))
     con.execute("UPDATE entitlements SET active=0 WHERE source_type='order' AND source_ref=?", (order_no,))
+
+
+def stripe_object_id(value) -> str:
+    # Stripe expandable references can be an ID or an expanded object.
+    value = value.get("id") if isinstance(value, dict) else value
+    return value if isinstance(value, str) else ""
+
+
+def stripe_amount_matches(obj, order) -> bool:
+    amount, currency = obj.get("amount_total"), obj.get("currency")
+    return (type(amount) is int and amount == order["amount_minor"]
+            and isinstance(currency, str) and currency.upper() == order["currency"].upper())
+
+
+def apply_stripe_checkout(con, obj):
+    metadata = obj.get("metadata") or {}
+    if not isinstance(metadata, dict):
+        raise HTTPException(400, "Invalid checkout metadata")
+    order_no = metadata.get("order_no") or obj.get("client_reference_id")
+    if not isinstance(order_no, str) or not order_no:
+        raise HTTPException(400, "Checkout order reference missing")
+    order = con.execute("SELECT * FROM orders WHERE order_no=?", (order_no,)).fetchone()
+    if not order:
+        raise HTTPException(404, "Order not found")
+    if (order["provider"] != "stripe" or not stripe_amount_matches(obj, order)
+            or obj.get("mode") != "payment"
+            or metadata.get("user_sub") != order["user_sub"]
+            or (obj.get("client_reference_id") and obj["client_reference_id"] != order_no)):
+        raise HTTPException(400, "Checkout does not match the order")
+    session_id, payment_intent = obj.get("id"), stripe_object_id(obj.get("payment_intent"))
+    if not isinstance(session_id, str) or not session_id or not payment_intent:
+        raise HTTPException(400, "Checkout payment binding missing")
+    stored_session = order["stripe_session_id"]
+    if not stored_session and order["provider_ref"].startswith("cs_"):
+        stored_session = order["provider_ref"]
+    if stored_session and stored_session != session_id:
+        raise HTTPException(400, "Checkout session does not match the order")
+    if order["status"] in {"paid", "refunded"}:
+        if order["provider_ref"] != payment_intent:
+            raise HTTPException(400, "Checkout payment does not match the order")
+        # Legacy paid orders may have lost their original session ID. They can
+        # acknowledge the same payment, but must never grant/renew access again.
+        return
+    if order["status"] != "pending" or not stored_session:
+        raise HTTPException(409, "Checkout binding is not ready")
+    if con.execute("SELECT 1 FROM orders WHERE provider='stripe' AND provider_ref=? AND order_no<>?",
+                   (payment_intent, order_no)).fetchone():
+        raise HTTPException(400, "Payment is already bound to another order")
+    con.execute("UPDATE orders SET stripe_session_id=? WHERE order_no=?", (stored_session, order_no))
+    mark_order_paid(con, order_no, payment_intent)
 
 
 @app.middleware("http")
@@ -1048,8 +1105,14 @@ async def checkout(product_id: int, request: Request, csrf_token: str = Form(...
             con.execute("UPDATE orders SET status='failed' WHERE order_no=?", (order_no,))
         raise HTTPException(502, "支付网关创建结账会话失败")
     payload = result.json()
+    if (not isinstance(payload, dict) or not isinstance(payload.get("id"), str) or not payload["id"]
+            or not stripe_amount_matches(payload, {"amount_minor": product["price_minor"], "currency": product["currency"]})):
+        with db() as con:
+            con.execute("UPDATE orders SET status='failed' WHERE order_no=?", (order_no,))
+        raise HTTPException(502, "支付会话金额或币种与订单不一致，请联系管理员")
     with db() as con:
-        con.execute("UPDATE orders SET provider_ref=? WHERE order_no=?", (payload.get("id", ""), order_no))
+        con.execute("UPDATE orders SET provider_ref=?,stripe_session_id=? WHERE order_no=?",
+                    (payload["id"], payload["id"], order_no))
     return RedirectResponse(payload["url"], status_code=303)
 
 
@@ -1071,24 +1134,36 @@ async def stripe_webhook(request: Request):
     expected = hmac.new(webhook_secret.encode(), f"{timestamp}.".encode() + body, hashlib.sha256).hexdigest()
     if abs(int(time.time()) - timestamp) > 300 or not any(hmac.compare_digest(expected, value) for value in fields.get("v1", [])):
         raise HTTPException(400, "invalid webhook signature")
-    event = json.loads(body)
+    try:
+        event = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        raise HTTPException(400, "Invalid webhook event")
+    if not isinstance(event, dict):
+        raise HTTPException(400, "Invalid webhook event")
     event_id = event.get("id", "")
     event_type = event.get("type", "")
-    obj = event.get("data", {}).get("object", {})
+    data = event.get("data")
+    obj = data.get("object") if isinstance(data, dict) else None
+    if not isinstance(event_id, str) or not event_id or not isinstance(event_type, str) or not event_type or not isinstance(obj, dict):
+        raise HTTPException(400, "Invalid webhook event")
     with db() as con:
         try:
             con.execute("INSERT INTO webhook_events(provider,event_id,event_type,received_at) VALUES('stripe',?,?,?)",
                         (event_id, event_type, int(time.time())))
         except sqlite3.IntegrityError:
             return {"received": True, "duplicate": True}
-        if event_type == "checkout.session.completed" and obj.get("payment_status") == "paid":
-            order_no = obj.get("metadata", {}).get("order_no") or obj.get("client_reference_id", "")
-            mark_order_paid(con, order_no, obj.get("payment_intent", ""))
+        if event_type in {"checkout.session.completed", "checkout.session.async_payment_succeeded"} and obj.get("payment_status") == "paid":
+            apply_stripe_checkout(con, obj)
         elif event_type == "charge.refunded":
-            payment_intent = obj.get("payment_intent", "")
-            order = con.execute("SELECT order_no FROM orders WHERE provider_ref=?", (payment_intent,)).fetchone()
-            if order:
-                revoke_order(con, order["order_no"])
+            payment_intent = stripe_object_id(obj.get("payment_intent"))
+            if not payment_intent:
+                raise HTTPException(400, "Refund payment binding missing")
+            orders = con.execute("SELECT order_no FROM orders WHERE provider='stripe' AND provider_ref=?", (payment_intent,)).fetchall()
+            if len(orders) != 1:
+                # Refunds can arrive before checkout completion; roll back the
+                # receipt so Stripe can retry after the payment is bound.
+                raise HTTPException(409, "Refund payment is not bound to an order")
+            revoke_order(con, orders[0]["order_no"])
     return {"received": True}
 
 
