@@ -11,22 +11,35 @@ const LABELS = {
   maintenance: "部分受监测服务维护中",
   unknown: "服务状态待确认",
 };
-const validTime = (value) => typeof value === "number" && Number.isFinite(value) && value > 0;
+const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+const positiveInteger = (value) => Number.isSafeInteger(value) && value > 0;
+const validTime = positiveInteger;
 const fresh = (value, now, maxAge) => validTime(value) && value <= now && now - value <= maxAge;
 const summary = (status) => ({ status, label: LABELS[status] });
 
 export function deriveStatusSummary(data, now = Date.now() / 1000) {
-  if (data?.schema_version !== 2 || !fresh(data.generated_at, now, STALE_AFTER_SECONDS) ||
+  if (!record(data) || data.schema_version !== 2 || !positiveInteger(data.stale_after_seconds) ||
+      !Number.isFinite(now) || now <= 0 ||
       !Array.isArray(data.services) || !data.services.length) return summary("unknown");
-  const maxAge = typeof data.stale_after_seconds === "number" && data.stale_after_seconds > 0
-    ? Math.min(data.stale_after_seconds, STALE_AFTER_SECONDS) : STALE_AFTER_SECONDS;
-  const keys = data.services.map((service) => service?.key);
+  // Accept a stricter server freshness window, but never extend our local limit.
+  const maxAge = Math.min(data.stale_after_seconds, STALE_AFTER_SECONDS);
+  if (!fresh(data.generated_at, now, maxAge)) return summary("unknown");
+  const services = Array.from(data.services);
+  // Validate the whole consumed contract before trusting even an incident status.
+  // A null probe time is legitimate only for an explicitly stale/unprobed service.
+  if (!services.every((service) => record(service) &&
+      typeof service.key === "string" && service.key.trim() === service.key && service.key.length > 0 &&
+      typeof service.stale === "boolean" && PRIORITY.includes(service.status) &&
+      (service.last_checked_at === null ? service.stale :
+        validTime(service.last_checked_at) && service.last_checked_at <= data.generated_at))) {
+    return summary("unknown");
+  }
+  const keys = services.map((service) => service.key);
   const complete = REQUIRED_SERVICE_KEYS.every((key) => keys.includes(key)) &&
-    keys.every((key) => typeof key === "string" && key.length > 0) && new Set(keys).size === keys.length;
-  const states = data.services.map((service) =>
-    service && service.stale !== true && fresh(service.last_checked_at, now, maxAge) &&
-      PRIORITY.includes(service.status) ? service.status : "unknown");
-  if (!complete) states.push("unknown");
+    new Set(keys).size === keys.length;
+  if (!complete) return summary("unknown");
+  const states = services.map((service) =>
+    !service.stale && fresh(service.last_checked_at, now, maxAge) ? service.status : "unknown");
   // Known incidents retain the status page's priority; missing data can never turn green.
   return summary(PRIORITY.find((state) => states.includes(state)) || "unknown");
 }

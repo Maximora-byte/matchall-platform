@@ -45,6 +45,89 @@ test("one old service or elapsed time expires health, even with a newly generate
   assert.equal(deriveStatusSummary(data, now + 1).status, "unknown");
 });
 
+test("stale_after_seconds must be a positive safe integer without fallback coercion", () => {
+  for (const value of [undefined, null, "180", "", true, false, 0, -1, 0.5, 180.5, NaN, Infinity, -Infinity, Number.MAX_SAFE_INTEGER + 1, [], {}]) {
+    const data = payload();
+    if (value === undefined) delete data.stale_after_seconds;
+    else data.stale_after_seconds = value;
+    assert.equal(deriveStatusSummary(data, now).status, "unknown", `freshness window: ${String(value)}`);
+  }
+});
+
+test("valid freshness windows are honored for response and probes, with a local upper limit", () => {
+  const data = payload();
+  data.stale_after_seconds = 10;
+  assert.equal(deriveStatusSummary(data, now).status, "operational");
+  assert.equal(deriveStatusSummary(data, now + 0.5).status, "unknown");
+  data.services.forEach((service) => { service.last_checked_at = now; });
+  assert.equal(deriveStatusSummary(data, now + 10).status, "operational");
+  assert.equal(deriveStatusSummary(data, now + 10.5).status, "unknown");
+  data.stale_after_seconds = Number.MAX_SAFE_INTEGER;
+  assert.equal(deriveStatusSummary(data, now + 180).status, "operational");
+  assert.equal(deriveStatusSummary(data, now + 180.5).status, "unknown");
+});
+
+test("stale must be an explicit boolean on every service", () => {
+  for (const value of [undefined, null, "false", "true", 0, 1, "", [], {}]) {
+    const data = payload();
+    if (value === undefined) delete data.services[0].stale;
+    else data.services[0].stale = value;
+    assert.equal(deriveStatusSummary(data, now).status, "unknown", `stale: ${String(value)}`);
+  }
+  const data = payload();
+  data.services[0].stale = true;
+  assert.equal(deriveStatusSummary(data, now).status, "unknown");
+});
+
+test("API timestamps must be positive safe integer seconds and cannot claim future probes", () => {
+  for (const field of ["generated_at", "last_checked_at"]) {
+    for (const value of [undefined, null, "2000000000", true, false, 0, -1, now - 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, [], {}, now + 1]) {
+      const data = payload();
+      const target = field === "generated_at" ? data : data.services[0];
+      if (value === undefined) delete target[field];
+      else target[field] = value;
+      assert.equal(deriveStatusSummary(data, now).status, "unknown", `${field}: ${String(value)}`);
+    }
+  }
+  const data = payload();
+  data.generated_at = now - 5;
+  data.services[0].last_checked_at = now - 1;
+  assert.equal(deriveStatusSummary(data, now).status, "unknown", "probe cannot be newer than its response");
+  for (const clock of [null, "2000000000", false, 0, -1, NaN, Infinity]) {
+    assert.equal(deriveStatusSummary(payload(), clock).status, "unknown", `clock: ${String(clock)}`);
+  }
+});
+
+test("malformed response shapes fail closed even when another service reports an incident", () => {
+  for (const data of [undefined, null, [], "healthy", 1, true]) {
+    assert.equal(deriveStatusSummary(data, now).status, "unknown");
+  }
+  for (const mutate of [
+    (data) => { data.schema_version = "2"; },
+    (data) => { delete data.services; },
+    (data) => { data.services = {}; },
+    (data) => { data.services.pop(); },
+    (data) => { data.services[1] = null; },
+    (data) => { data.services[1] = []; },
+    (data) => { delete data.services[1]; },
+    (data) => { data.services[1].key = data.services[0].key; },
+    (data) => { delete data.services[1].key; },
+    (data) => { data.services[1].key = 1; },
+    (data) => { data.services[1].key = " "; },
+    (data) => { data.services[1].status = "unexpected"; },
+    (data) => { data.services[1].status = null; },
+    (data) => { delete data.services[1].status; },
+    (data) => { data.services[1].stale = "false"; },
+    (data) => { data.services[1].last_checked_at = null; },
+    (data) => { data.services.push({ key: "dns", status: "operational", last_checked_at: now }); },
+  ]) {
+    const data = payload();
+    data.services[0].status = "outage";
+    mutate(data);
+    assert.equal(deriveStatusSummary(data, now).status, "unknown");
+  }
+});
+
 test("all six states retain status-page priority and known incidents remain visible", () => {
   for (const state of ["degraded", "partial_outage", "outage", "maintenance", "unknown"]) {
     const data = payload();
@@ -59,10 +142,24 @@ test("all six states retain status-page priority and known incidents remain visi
 
 test("additional unconfigured services prevent green without hiding known incidents", () => {
   const data = payload();
-  data.services.push({ key: "dns", status: "unknown", last_checked_at: null });
+  data.services.push({ key: "dns", status: "unknown", last_checked_at: null, stale: true });
   assert.equal(deriveStatusSummary(data, now).status, "unknown");
   data.services[0].status = "degraded";
   assert.equal(deriveStatusSummary(data, now).status, "degraded");
+});
+
+test("legitimate stale and unprobed services retain another service's known incident", () => {
+  for (const state of ["unknown", "maintenance"]) {
+    for (const timestamp of [null, now - 181]) {
+      const data = payload();
+      data.services[0].last_checked_at = timestamp;
+      data.services[0].stale = true;
+      data.services[0].status = state;
+      assert.equal(deriveStatusSummary(data, now).status, "unknown");
+      data.services[1].status = "outage";
+      assert.equal(deriveStatusSummary(data, now).status, "outage");
+    }
+  }
 });
 
 test("status requests use the public endpoint without cookies or cached health", async () => {
@@ -137,6 +234,24 @@ test("mounted badge clears prior health on refresh failure", async (t) => {
   await settle();
   assert.equal(element.dataset.status, "unknown");
   assert.equal(label.textContent, "服务状态待确认");
+});
+
+test("mounted badge clears prior health on malformed refresh and recovers from valid data", async (t) => {
+  let data = payload();
+  const { element, label, resume, settle } = await badgeHarness(t, async () => ({
+    ok: true, json: async () => data,
+  }));
+  assert.equal(element.dataset.status, "operational");
+  data = payload();
+  data.services[0].stale = "false";
+  resume();
+  await settle();
+  assert.equal(element.dataset.status, "unknown");
+  assert.equal(label.textContent, "服务状态待确认");
+  data = payload();
+  resume();
+  await settle();
+  assert.equal(element.dataset.status, "operational");
 });
 
 test("mounted badge times out and an older aborted refresh cannot overwrite the latest response", async (t) => {

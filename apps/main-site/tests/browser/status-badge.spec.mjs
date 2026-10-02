@@ -35,6 +35,16 @@ test("missing, stale, malformed and failed responses never show green", async ({
     if (mode === "empty") data.services = [];
     if (mode === "incomplete") data.services.pop();
     if (mode === "stale") data.services[0].last_checked_at -= 200;
+    if (mode === "stale-string") data.services[0].stale = "false";
+    if (mode === "stale-number") data.services[0].stale = 0;
+    if (mode === "missing-stale") delete data.services[0].stale;
+    if (mode === "missing-window") delete data.stale_after_seconds;
+    if (mode === "invalid-window") data.stale_after_seconds = "180";
+    if (mode === "future-probe") data.services[0].last_checked_at = data.generated_at + 1;
+    if (mode === "malformed-incident") {
+      data.services[0].status = "outage";
+      data.services[1].stale = null;
+    }
     if (mode === "http") return fulfill(route, { status: 503, body: "unavailable" });
     if (mode === "malformed") return fulfill(route, { body: "not json" });
     if (mode === "network") return route.abort();
@@ -42,7 +52,8 @@ test("missing, stale, malformed and failed responses never show green", async ({
   });
   await page.goto("/");
   const badge = page.locator(".status-pill");
-  for (const failure of ["empty", "incomplete", "stale", "http", "malformed", "network"]) {
+  for (const failure of ["empty", "incomplete", "stale", "stale-string", "stale-number", "missing-stale",
+    "missing-window", "invalid-window", "future-probe", "malformed-incident", "http", "malformed", "network"]) {
     mode = "healthy";
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     await expect(badge).toHaveAttribute("data-status", "operational");
