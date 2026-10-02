@@ -5,9 +5,9 @@ go 1.26.8
 require (
 	github.com/AfterShip/email-verifier v1.5.0
 	github.com/alicebob/miniredis/v2 v2.39.0
-	github.com/getsentry/sentry-go v0.49.0
-	github.com/getsentry/sentry-go/fiber v0.49.0
-	github.com/getsentry/sentry-go/zerolog v0.49.0
+	github.com/getsentry/sentry-go v0.31.1
+	github.com/getsentry/sentry-go/fiber v0.31.1
+	github.com/getsentry/sentry-go/zerolog v0.31.1
 	github.com/go-co-op/gocron/v2 v2.22.0
 	github.com/go-playground/validator/v10 v10.30.5
 	github.com/gofiber/fiber/v2 v2.52.14

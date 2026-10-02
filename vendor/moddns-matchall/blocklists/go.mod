@@ -4,8 +4,8 @@ go 1.26.8
 
 require (
 	github.com/alicebob/miniredis/v2 v2.39.0
-	github.com/getsentry/sentry-go v0.49.0
-	github.com/getsentry/sentry-go/zerolog v0.49.0
+	github.com/getsentry/sentry-go v0.31.1
+	github.com/getsentry/sentry-go/zerolog v0.31.1
 	github.com/go-co-op/gocron/v2 v2.22.0
 	github.com/google/uuid v1.6.0
 	github.com/ivpn/dns/libs v0.0.0

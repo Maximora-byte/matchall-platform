@@ -6,8 +6,8 @@ github.com/AdguardTeam/dnscrypt v0.0.2 h1:kIFCyjYofKHug7RwPGOjVga81P0/zOQdbUN+7p
 github.com/AdguardTeam/dnscrypt v0.0.2/go.mod h1:qCFs51rLfNzEDZqb6nz1tocVLnEearJ1zng6O3I6ecA=
 github.com/AdguardTeam/dnsproxy v0.85.0 h1:zi4cPvQfpb19cBJUFiFMJBktqSLAmc1X0thbR9r9yls=
 github.com/AdguardTeam/dnsproxy v0.85.0/go.mod h1:6kCM5M/gtuQr/0BjtnReHlK6+N0BTee+WHOq3m1JNq4=
-github.com/AdguardTeam/golibs v0.35.16 h1:e9dyk7jfzpxMcyVZ8RktKV6JMeiQ9MpEhp/Ahm3j/R4=
-github.com/AdguardTeam/golibs v0.35.16/go.mod h1:lGsRwlo3R3ma5o8mgdDv3I+6DYTiCHfrhNyUamqhbK8=
+github.com/AdguardTeam/golibs v0.35.13 h1:sflm5/sWhiGwUXNAZObiqVMkdg8HeYVFK2A0oJ27hbU=
+github.com/AdguardTeam/golibs v0.35.13/go.mod h1:8EEGG4auTDd8HV3tBETXLkuxDH9lk9vvFbJn+wbmypg=
 github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c h1:udKWzYgxTojEKWjV8V+WSxDXJ4NFATAsZjh8iIbsQIg=
 github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
@@ -60,10 +60,10 @@ github.com/ebitengine/purego v0.10.1 h1:dewVBCBT2GaMu1SrNTYxQhgQBethzfhiwvZiLGP/
 github.com/ebitengine/purego v0.10.1/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
 github.com/felixge/httpsnoop v1.1.0 h1:3YtUj32ZZkqZtt3sZZsClsymw/QDuVfpNhoA31zeORc=
 github.com/felixge/httpsnoop v1.1.0/go.mod h1:Zqxgdd+1Rkcz8euOqdr7lqgCRJztwr5hp9vDSi5UZCE=
-github.com/getsentry/sentry-go v0.49.0 h1:Ehejknu1l023Ub7QoRBVLAI7g3Jnhqku4oWx4B4Sh5s=
-github.com/getsentry/sentry-go v0.49.0/go.mod h1:nuMJAoCfe1u0Bts2ocyNI+TW8HT84vRMqwA5Qq/SKUI=
-github.com/getsentry/sentry-go/zerolog v0.49.0 h1:N10RMxfYtZ16wPiRJ871LF3cfT0SvPIAgFKbY0VUnVw=
-github.com/getsentry/sentry-go/zerolog v0.49.0/go.mod h1:i7lEn+xMIQ/hW7qmKdKcSadERTCNP5Sf5GYF/xCs0hQ=
+github.com/getsentry/sentry-go v0.45.1 h1:9rfzJtGiJG+MGIaWZXidDGHcH5GU1Z5y0WVJGf9nysw=
+github.com/getsentry/sentry-go v0.45.1/go.mod h1:XDotiNZbgf5U8bPDUAfvcFmOnMQQceESxyKaObSssW0=
+github.com/getsentry/sentry-go/zerolog v0.31.1 h1:i6aJFsWGL021KCPzB/WhBcyg8NcNsUM/AuFq1Y3dANc=
+github.com/getsentry/sentry-go/zerolog v0.31.1/go.mod h1:4bpkgp9HcbX/kZ9hHolRKKSRmgGMy1bqmMWJ4SO1iqI=
 github.com/go-errors/errors v1.4.2 h1:J6MZopCL4uSllY1OfXM374weqZFFItUbrImctkmUxIA=
 github.com/go-errors/errors v1.4.2/go.mod h1:sIVyrIiJhuEF+Pj9Ebtd6P/rEYROXFi3BopGUQ5a5Og=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=

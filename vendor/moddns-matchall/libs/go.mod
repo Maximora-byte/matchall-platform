@@ -4,8 +4,8 @@ go 1.26.8
 
 require (
 	github.com/alicebob/miniredis/v2 v2.39.0
-	github.com/getsentry/sentry-go v0.49.0
-	github.com/getsentry/sentry-go/zerolog v0.49.0
+	github.com/getsentry/sentry-go v0.31.1
+	github.com/getsentry/sentry-go/zerolog v0.31.1
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.11.1
