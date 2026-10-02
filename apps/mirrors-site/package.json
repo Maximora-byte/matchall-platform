@@ -4,5 +4,5 @@
   "type": "module",
   "scripts": { "check": "astro check", "build": "astro build" },
   "dependencies": { "astro": "^5.18.2" },
-  "devDependencies": { "@astrojs/check": "^0.9.4", "typescript": "^5.9.2" }
+  "devDependencies": { "@astrojs/check": "^0.9.4", "typescript": "^7.0.2" }
 }
