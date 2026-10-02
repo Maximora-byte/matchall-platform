@@ -1,6 +1,5 @@
 import sitemap from "@astrojs/sitemap";
 import svelte from "@astrojs/svelte";
-import tailwind from "@astrojs/tailwind";
 import { pluginCollapsibleSections } from "@expressive-code/plugin-collapsible-sections";
 import { pluginLineNumbers } from "@expressive-code/plugin-line-numbers";
 import swup from "@swup/astro";
@@ -29,10 +28,9 @@ export default defineConfig({
 	site: "https://blog.maximoraverse.org/",
 	base: "/",
 	trailingSlash: "always",
+	// Preserve existing entry slugs/render() and routes during the Astro upgrade.
+	legacy: { collectionsBackwardsCompat: true },
 	integrations: [
-		tailwind({
-			nesting: true,
-		}),
 		swup({
 			theme: false,
 			animationClass: "transition-swup-", // see https://swup.js.org/options/#animationselector
