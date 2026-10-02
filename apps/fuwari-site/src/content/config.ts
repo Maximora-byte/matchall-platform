@@ -1,6 +1,8 @@
-import { defineCollection, z } from "astro:content";
+import { defineCollection } from "astro:content";
+import { z } from "astro/zod";
 
 const postsCollection = defineCollection({
+	type: "content",
 	schema: z.object({
 		title: z.string(),
 		published: z.date(),
@@ -20,16 +22,22 @@ const postsCollection = defineCollection({
 	}),
 });
 const specCollection = defineCollection({
+	type: "content",
 	schema: z.object({}),
 });
 const docsCollection = defineCollection({
+	type: "content",
 	schema: z.object({
 		title: z.string(),
 		description: z.string().optional().default(""),
 		lastUpdated: z.coerce.date(),
 	}),
 });
-export const collections = {
+export const collections: {
+	posts: typeof postsCollection;
+	spec: typeof specCollection;
+	docs: typeof docsCollection;
+} = {
 	posts: postsCollection,
 	spec: specCollection,
 	docs: docsCollection,
