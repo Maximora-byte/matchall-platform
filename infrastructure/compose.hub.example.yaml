@@ -1,0 +1,7 @@
+# Sanitized override only; apply after the operator's existing Hub Compose file.
+# Rename "hub" to match that file's service key before use. This is not a base
+# deployment file and intentionally defines no image, ports, mounts, or secrets.
+services:
+  hub:
+    environment:
+      SNAPSHOT_STALE_AFTER_SECONDS: "900"

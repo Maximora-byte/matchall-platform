@@ -28,6 +28,19 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 os.umask(0o077)
 
+
+def positive_int_setting(name: str, default: str) -> int:
+    error = f"{name} must be a positive integer (>= 1)."
+    try:
+        value = int(os.getenv(name, default))
+    except ValueError:
+        # Never echo raw configuration values or the conversion exception.
+        raise ValueError(error) from None
+    if value < 1:
+        raise ValueError(error)
+    return value
+
+
 CONSOLE_URL = os.getenv("CONSOLE_URL", "https://console.maximoraverse.org").rstrip("/")
 STATUS_URL = os.getenv("STATUS_URL", "https://status.maximoraverse.org").rstrip("/")
 DOCS_URL = os.getenv("DOCS_URL", "https://docs.maximoraverse.org").rstrip("/")
@@ -37,6 +50,8 @@ OIDC_CLIENT_SECRET_FILE = os.getenv("OIDC_CLIENT_SECRET_FILE", "/run/secrets/oid
 SESSION_SECRET_FILE = os.getenv("SESSION_SECRET_FILE", "/run/secrets/session_secret")
 DATA_DIR = Path(os.getenv("DATA_DIR", "/data"))
 SNAPSHOT_DIR = DATA_DIR / "snapshots"
+# Presentation freshness budget; confirm against the collector schedule at deployment.
+SNAPSHOT_STALE_AFTER_SECONDS = positive_int_setting("SNAPSHOT_STALE_AFTER_SECONDS", "900")
 STATUS_DB = DATA_DIR / "status" / "status.db"
 NOTIFY_DB = DATA_DIR / "notifications" / "notifications.db"
 DOCS_DIR = Path(os.getenv("DOCS_DIR", "/app/docs"))
@@ -602,10 +617,86 @@ def load_docs():
 
 
 def load_snapshot(name: str):
+    """Read existing local snapshots without confusing missing/error with no account."""
     try:
-        return json.loads((SNAPSHOT_DIR / f"{name}.json").read_text())
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {"generated_at": 0, "users": []}
+        payload = json.loads((SNAPSHOT_DIR / f"{name}.json").read_text())
+    except FileNotFoundError:
+        return {"generated_at": None, "users": [], "read_state": "missing"}
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return {"generated_at": None, "users": [], "read_state": "error"}
+    if not isinstance(payload, dict):
+        return {"generated_at": None, "users": [], "read_state": "error"}
+    generated_at, rows = payload.get("generated_at"), payload.get("users")
+    valid_time = type(generated_at) is int and 0 < generated_at <= 253402300799
+    valid_rows = isinstance(rows, list) and all(
+        isinstance(row, dict) and any(isinstance(row.get(key), str) and row[key] for key in ("subject", "username", "email"))
+        and all(row.get(key) is None or isinstance(row.get(key), str) for key in ("subject", "username", "email"))
+        for row in rows
+    )
+    return {"generated_at": generated_at if valid_time else None,
+            "users": rows if valid_rows else [],
+            "read_state": "ok" if valid_time and valid_rows else "error"}
+
+
+CONSOLE_SOURCES = {
+    "drive": {"snapshot": "nextcloud", "name": "MatchAll Drive", "icon": "D",
+              "url": "https://drive.maximoraverse.org/login", "action": "打开网盘",
+              "guide": "drive-guide", "required_numbers": ("used", "quota"), "flag": "enabled"},
+    "network": {"snapshot": "xboard", "name": "MatchAll Network", "icon": "N",
+                "url": "https://proxyservice.maximoraverse.org/login", "action": "管理网络服务",
+                "guide": "network-guide", "required_numbers": ("used", "transfer_enable", "expired_at", "online_count", "device_limit"), "flag": "banned"},
+    "mirrors": {"snapshot": "mirrors", "name": "MatchAll Mirrors", "icon": "M",
+                "url": "https://mirrors.maximoraverse.org/account", "action": "管理软件授权",
+                "guide": "mirrors-user", "required_numbers": ("active_entitlements", "active_tokens", "order_count", "paid_orders")},
+}
+CONSOLE_STATES = {
+    "linked": ("汇总正常", "已关联账户的只读汇总；不代表服务健康或已获得付费权限。"),
+    "unlinked": ("未关联", "本次完整快照中未找到匹配账户。请进入原服务确认登录与开通情况，再等待下一次同步。"),
+    "restricted": ("账户受限", "快照显示账户停用或受限，请在原服务核对；Console 无法解除限制。"),
+    "stale": ("数据过期", "最新快照已超出同步时效，无法确认当前账户状态。请在原服务查看最新数据。"),
+    "error": ("同步异常", "快照无法读取或数据不完整，暂不展示汇总。此提示不代表业务服务发生故障。"),
+    "missing": ("等待同步", "尚未收到该服务的快照，无法判断账户是否关联。"),
+}
+
+
+def valid_console_record(record, source):
+    valid = all(field in record and (
+        (field == "expired_at" and record[field] is None) or
+        (type(record[field]) is int and (field == "quota" or record[field] >= 0)
+         and (field != "expired_at" or record[field] <= 253402300799))
+    ) for field in source["required_numbers"])
+    flag = source.get("flag")
+    valid = valid and (not flag or (flag in record and type(record[flag]) in (bool, int) and record[flag] in (0, 1)))
+    return valid and (source["snapshot"] != "xboard" or isinstance(record.get("plan_name"), str))
+
+
+def console_service_summaries(user, now=None):
+    now = int(time.time()) if now is None else now
+    result = []
+    for key, source in CONSOLE_SOURCES.items():
+        snapshot = load_snapshot(source["snapshot"])
+        generated_at = snapshot["generated_at"]
+        state = snapshot["read_state"]
+        record = None
+        if state == "ok":
+            if not all(valid_console_record(row, source) for row in snapshot["users"]):
+                state = "error"
+            elif generated_at > now + 60:
+                state = "error"
+            elif now - generated_at > SNAPSHOT_STALE_AFTER_SECONDS:
+                state = "stale"
+            else:
+                record = find_record(snapshot["users"], user, subject=key != "drive")
+                state = "linked" if record else "unlinked"
+                if record:
+                    record = {**record, **{field: record[field] or 0 for field in source["required_numbers"]}}
+                    if (key == "drive" and not record["enabled"]) or (key == "network" and record["banned"]):
+                        state = "restricted"
+        label, detail = CONSOLE_STATES[state]
+        result.append({**source, "key": key, "state": state, "label": label, "detail": detail,
+                       "generated_at": generated_at, "record": record,
+                       "fresh": state in {"linked", "unlinked", "restricted"}})
+    return result
 
 
 def find_record(rows, user, *, subject=True, username=True, email=True):
@@ -758,16 +849,13 @@ def root(request: Request):
 def console_page(request: Request):
     user = get_user(request)
     services, _ = status_summary()
-    if not user:
-        return render("console.html", request, user=None, services=services, network=None, drive=None, mirrors=None, synced_at=0)
-    xboard = load_snapshot("xboard")
-    nextcloud = load_snapshot("nextcloud")
-    mirror = load_snapshot("mirrors")
-    network = find_record(xboard.get("users", []), user)
-    drive = find_record(nextcloud.get("users", []), user, subject=False)
-    mirrors = find_record(mirror.get("users", []), user)
-    synced_at = min([x for x in [xboard.get("generated_at", 0), nextcloud.get("generated_at", 0), mirror.get("generated_at", 0)] if x] or [0])
-    return render("console.html", request, user=user, services=services, network=network, drive=drive, mirrors=mirrors, synced_at=synced_at)
+    summaries = console_service_summaries(user) if user else []
+    response = render("console.html", request, user=user, services=services,
+                      summaries=summaries, docs_url=DOCS_URL,
+                      fresh_sources=sum(item["fresh"] for item in summaries),
+                      snapshot_stale_after_seconds=SNAPSHOT_STALE_AFTER_SECONDS)
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 @app.get("/login")
