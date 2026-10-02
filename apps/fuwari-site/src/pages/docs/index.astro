@@ -8,6 +8,7 @@ const order = [
 	"account-security",
 	"drive-guide",
 	"network-guide",
+	"dns-guide",
 	"mirrors-user",
 	"mirrors-developer",
 	"notification-delivery",
@@ -17,7 +18,7 @@ const entries = await getCollection("docs");
 const docs = entries.sort((a, b) => order.indexOf(a.slug) - order.indexOf(b.slug));
 const groups = [
 	{ title: "开始使用", description: "先完成账户与基础安全设置。", slugs: ["getting-started", "account-security"] },
-	{ title: "核心服务", description: "配置文件同步、网络连接和通知。", slugs: ["drive-guide", "network-guide", "notification-delivery"] },
+	{ title: "核心服务", description: "配置文件同步、网络连接和通知。", slugs: ["drive-guide", "network-guide", "dns-guide", "notification-delivery"] },
 	{ title: "软件分发", description: "下载、校验、授权与开发者发布。", slugs: ["mirrors-user", "mirrors-developer"] },
 	{ title: "获得帮助", description: "按正确顺序定位常见问题。", slugs: ["troubleshooting"] },
 ];
@@ -27,7 +28,7 @@ const groups = [
 	<section class="card-base rounded-[var(--radius-large)] px-6 py-7 md:px-9 md:py-9" data-pagefind-body>
 		<p class="text-sm font-bold tracking-[0.18em] text-[var(--primary)]">MATCHALL DOCS</p>
 		<h1 data-pagefind-meta="title" class="mt-2 text-3xl md:text-4xl font-bold text-black/90 dark:text-white/90">文档中心</h1>
-		<p class="mt-3 max-w-2xl text-black/60 dark:text-white/60">从统一账户开始，了解 Drive、Network、Mirrors 与通知服务。8 篇指南均包含操作步骤、安全提示和故障排查，并纳入全站搜索。</p>
+		<p class="mt-3 max-w-2xl text-black/60 dark:text-white/60">从统一账户开始，了解 Drive、Network、DNS、Mirrors 与通知服务。{docs.length} 篇指南提供操作步骤、安全提示或原服务的配置入口，并纳入全站搜索。</p>
 
 		<a href="/docs/getting-started/" class="mt-7 flex items-center justify-between gap-4 rounded-2xl border border-[var(--primary)]/25 bg-[var(--primary)]/[0.08] p-5 transition hover:border-[var(--primary)]/60">
 			<div><span class="text-xs font-bold tracking-[0.16em] text-[var(--primary)]">推荐起点 · 约 3 分钟</span><h2 class="mt-1 text-xl font-bold">第一次使用 MatchAll？</h2><p class="mt-1 text-sm text-black/55 dark:text-white/55">从邀请注册、统一登录和第一次服务检查开始。</p></div>
