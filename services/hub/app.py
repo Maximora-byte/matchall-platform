@@ -1141,7 +1141,28 @@ async def internal_event(request: Request):
     supplied = request.headers.get("x-matchall-signature", "").removeprefix("sha256=")
     if not secrets.compare_digest(expected, supplied):
         raise HTTPException(403, "Invalid signature")
-    event = json.loads(raw)
+    try:
+        event = json.loads(raw)
+    except (ValueError, RecursionError):
+        # Includes invalid encoding/syntax, oversized integers and nesting.
+        raise HTTPException(400, "Invalid event payload") from None
+    # Authenticate the original bytes before validating their shape. Keep the
+    # legacy defaults, but never pass missing/structured values to storage.
+    if not isinstance(event, dict):
+        raise HTTPException(400, "Invalid event payload")
+    if any(not isinstance(event.get(field), str) or not event[field].strip()
+           for field in ("id", "title")):
+        raise HTTPException(400, "Invalid event payload")
+    if any(field in event and not isinstance(event[field], str)
+           for field in ("type", "severity", "body", "url", "audience", "visibility")):
+        raise HTTPException(400, "Invalid event payload")
+    try:
+        for field in ("id", "title", "type", "severity", "body", "url", "audience", "visibility"):
+            if field in event:
+                event[field].encode("utf-8")
+    except UnicodeEncodeError:
+        # JSON escapes can contain lone surrogates that SQLite cannot store.
+        raise HTTPException(400, "Invalid event payload") from None
     audience = event.get("audience", "users")
     if audience not in ("users", "public"):
         raise HTTPException(400, "Unsupported notification audience")

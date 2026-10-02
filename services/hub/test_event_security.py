@@ -64,9 +64,23 @@ class EventSecurityTests(unittest.IsolatedAsyncioTestCase):
         return hmac.new((self.secret if secret is None else secret).encode(), raw, hashlib.sha256).hexdigest()
 
     async def post_event(self, event, prefix="sha256="):
-        raw = self.encode(event)
+        return await self.post_raw(self.encode(event), prefix=prefix)
+
+    async def post_raw(self, raw, prefix="sha256="):
         return await self.client.post("/internal/events", content=raw,
             headers={"x-matchall-signature": prefix + self.signature(raw)})
+
+    async def assert_invalid_payload(self, raw):
+        with app.notify_db() as con:
+            before = list(con.iterdump())
+        with patch.object(app, "publish_notification") as publish:
+            response = await self.post_raw(raw)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"detail": "Invalid event payload"})
+        publish.assert_not_called()
+        with app.notify_db() as con:
+            self.assertEqual(list(con.iterdump()), before)
+        self.assert_counts(0, 0)
 
     def assert_counts(self, notifications, jobs):
         with app.notify_db() as con:
@@ -112,6 +126,68 @@ class EventSecurityTests(unittest.IsolatedAsyncioTestCase):
             headers={"x-matchall-signature": "sha256=" + signature})
         self.assertEqual(response.status_code, 403)
         self.assert_counts(0, 0)
+
+    async def test_signed_malformed_json_is_rejected_without_mutation(self):
+        for raw in (b"", b'{"id":', b'{"id":"event-1","title":"Secret diagnostic",}', b"\xff",
+                    b'{"id":' + b"1" * 5000 + b"}", b"[" * 2000):
+            with self.subTest(raw=raw):
+                await self.assert_invalid_payload(raw)
+
+    async def test_signed_nonobject_json_is_rejected_without_mutation(self):
+        for event in (None, [], [self.event()], "event", 1, 1.5, True, False):
+            with self.subTest(event=event):
+                await self.assert_invalid_payload(self.encode(event))
+
+    async def test_signed_missing_required_fields_are_rejected_without_mutation(self):
+        for event in ({}, {"id": "event-1"}, {"title": "Synthetic release"}):
+            with self.subTest(event=event):
+                await self.assert_invalid_payload(self.encode(event))
+
+    async def test_signed_invalid_required_fields_are_rejected_without_mutation(self):
+        for field in ("id", "title"):
+            for value in (None, [], {}, 1, True, "", " \t\n"):
+                with self.subTest(field=field, value=value):
+                    await self.assert_invalid_payload(self.encode({**self.event(), field: value}))
+
+    async def test_signed_invalid_optional_fields_are_rejected_without_mutation(self):
+        for field in ("type", "severity", "body", "url", "audience", "visibility"):
+            for value in (None, [], {}, 1, True):
+                with self.subTest(field=field, value=value):
+                    await self.assert_invalid_payload(self.encode(self.event(**{field: value})))
+
+    async def test_signed_lone_surrogates_are_rejected_without_mutation(self):
+        for field in ("id", "title", "type", "severity", "body", "url", "audience", "visibility"):
+            for value in ("\ud800", "\udfff"):
+                with self.subTest(field=field, value=value):
+                    await self.assert_invalid_payload(self.encode({**self.event(), field: value}))
+
+    async def test_signature_is_checked_before_json_validation(self):
+        for raw in (b'{"id":', b"null", self.encode({})):
+            with self.subTest(raw=raw), patch.object(app.json, "loads") as decode:
+                response = await self.client.post("/internal/events", content=raw,
+                    headers={"x-matchall-signature": "sha256=" + "0" * 64})
+                decode.assert_not_called()
+            self.assertEqual(response.status_code, 403)
+            self.assert_counts(0, 0)
+
+    async def test_minimal_valid_event_preserves_optional_defaults(self):
+        response = await self.post_event({"id": "minimal", "title": "Minimal notification"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"accepted": True})
+        self.assert_counts(1, 5)
+        with app.notify_db() as con:
+            row = con.execute("SELECT * FROM notifications").fetchone()
+        self.assertEqual((row["kind"], row["severity"], row["body"], row["action_url"], row["audience"]),
+                         ("event", "info", "", "", "users"))
+
+    async def test_valid_current_mirrors_event_contract_is_accepted(self):
+        response = await self.post_event(self.event("release:example:stable:1.0", severity="info",
+            title="Example 1.0 已发布", body="stable 通道已有新版本。",
+            url="https://mirrors.example.invalid/project/example", audience="users", visibility="public",
+            project="example", version="1.0", channel="stable", created_at=1))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"accepted": True})
+        self.assert_counts(1, 5)
 
     async def test_duplicate_valid_event_is_idempotent(self):
         for _ in range(2):

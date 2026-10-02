@@ -16,6 +16,9 @@ updated: 2026-10-01
 - 取消偏好只影响后续通知，不删除站内历史。
 
 内部事件接口要求配置非空的 `EVENT_SECRET_FILE` 并验证 HMAC 签名；缺失或空白密钥会拒绝所有事件。
+接口先验证原始请求字节的 HMAC，再解析 JSON。签名错误仍返回 403；签名正确但 JSON 无法解析、顶层不是对象、缺少非空字符串 `id` / `title`，或可选字段 `type`、`severity`、`body`、`url`、`audience`、`visibility` 不是字符串时，返回固定的 400 错误，不写入通知或创建投递任务。
+解析器无法处理的整数长度 / 嵌套深度，以及上述字段中无法编码为 UTF-8 的孤立代理字符，也按无效请求返回 400。
+省略可选字段时，继续使用原有默认值：`type=event`、`severity=info`、空 `body` / `url`；Mirrors 的项目、版本、通道和时间等扩展字段仍可随事件传入。
 Hub 只支持 `users` 和 `public` 两种广泛通知受众，两者均可向已订阅用户投递；`public` 还会出现在公开 RSS 中。
 内部事件省略 `audience` 时默认为 `users`，其他值（包括 `private`）会被拒绝。Hub 不提供私有资源的按权限定向投递，生产方不得将私有内容标记为这两种广泛受众。
 版本发布事件如果显式标记为 `visibility: private`，即使受众标为 `users` 或 `public`，也会被拒绝。
