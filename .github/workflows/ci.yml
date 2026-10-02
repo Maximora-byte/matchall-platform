@@ -2,19 +2,28 @@ name: CI
 
 on:
   pull_request:
+  workflow_dispatch:
   push:
     branches: [main]
 
 permissions:
   contents: read
 
+# Cancel superseded PR runs; each main/dispatch run keeps its own group.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   python-services:
+    needs: repository-hygiene
+    if: needs.repository-hygiene.outputs.has_python_services == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        service: [hub, dns, mirrors]
+        service: ${{ fromJSON(needs.repository-hygiene.outputs.python_services) }}
     defaults:
       run:
         working-directory: services/${{ matrix.service }}
@@ -41,20 +50,14 @@ jobs:
           fi
 
   astro-apps:
+    needs: repository-hygiene
+    if: needs.repository-hygiene.outputs.has_astro_apps == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        app:
-          - main-site
-          - cv-site
-          - status-site
-          - console-site
-          - entry-sites
-          - dns-site
-          - docs-site
-          - mirrors-site
-          - investment-site
+        app: ${{ fromJSON(needs.repository-hygiene.outputs.astro_apps) }}
     defaults:
       run:
         working-directory: apps/${{ matrix.app }}
@@ -88,7 +91,10 @@ jobs:
           retention-days: 7
 
   fuwari:
+    needs: repository-hygiene
+    if: needs.repository-hygiene.outputs.fuwari == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: apps/fuwari-site
@@ -103,24 +109,24 @@ jobs:
       - run: pnpm run build
 
   php-syntax:
+    needs: repository-hygiene
+    if: needs.repository-hygiene.outputs.php == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Validate first-party WordPress PHP
         run: find wordpress -type f -name '*.php' -print0 | xargs -0 -n1 php -l
 
   go-modules:
+    needs: repository-hygiene
+    if: needs.repository-hygiene.outputs.has_go_modules == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        module:
-          - services/dns-transports
-          - vendor/moddns-matchall/api
-          - vendor/moddns-matchall/blocklists
-          - vendor/moddns-matchall/dnscheck
-          - vendor/moddns-matchall/libs
-          - vendor/moddns-matchall/proxy
+        module: ${{ fromJSON(needs.repository-hygiene.outputs.go_modules) }}
     defaults:
       run:
         working-directory: ${{ matrix.module }}
@@ -145,8 +151,31 @@ jobs:
 
   repository-hygiene:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      python_services: ${{ steps.changes.outputs.python_services }}
+      has_python_services: ${{ steps.changes.outputs.has_python_services }}
+      astro_apps: ${{ steps.changes.outputs.astro_apps }}
+      has_astro_apps: ${{ steps.changes.outputs.has_astro_apps }}
+      go_modules: ${{ steps.changes.outputs.go_modules }}
+      has_go_modules: ${{ steps.changes.outputs.has_go_modules }}
+      fuwari: ${{ steps.changes.outputs.fuwari }}
+      php: ${{ steps.changes.outputs.php }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # PR routing uses the real base/head merge-base, including renames.
+          fetch-depth: 0
+      - name: Test CI selection
+        run: python -m unittest discover -s scripts -p 'test_ci_select.py' -v
+      - name: Select affected checks
+        id: changes
+        shell: bash
+        run: |
+          python scripts/ci_select.py \
+            --event-name "$GITHUB_EVENT_NAME" \
+            --event-path "$GITHUB_EVENT_PATH" \
+            --output "$GITHUB_OUTPUT"
       - name: Reject runtime and secret-shaped files
         shell: bash
         run: |
