@@ -18,7 +18,7 @@ const services = [
   <main id="main-content">
     <section class="shell hero">
       <div class="hero-copy matchall-reveal">
-        <a class="status-pill" href="https://status.maximoraverse.org/"><span></span>所有核心服务在线 <b>查看状态 ↗</b></a>
+        <a class="status-pill" data-status="unknown" href="https://status.maximoraverse.org/"><span class="status-dot" aria-hidden="true"></span><span data-status-label aria-live="polite">服务状态待确认</span> <b>查看状态 ↗</b></a>
         <p class="eyebrow">One identity · Many possibilities</p>
         <h1>连接每一种<br /><em>数字生活。</em></h1>
         <p class="lead">MatchAll 将统一账户、私人云存储、全球网络、隐私 DNS、软件分发与技术内容连接在同一体验中。清晰、可靠，也更像一个整体。</p>
@@ -74,4 +74,5 @@ const services = [
     </section>
   </main>
   <Footer />
+  <script is:inline type="module" src="/status-summary.js?v=1"></script>
 </BaseLayout>
