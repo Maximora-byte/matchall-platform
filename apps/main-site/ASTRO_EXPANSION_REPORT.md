@@ -2,6 +2,12 @@
 
 Date: 2026-09-30
 
+Historical report: the deployment and validation statements below describe the
+original work and were not reverified by the 2026-10-03 repository task. For
+current implementation status and remaining acceptance, use the
+[roadmap](MIGRATION_ROADMAP.md) and
+[upgrade release checklist](../../docs/UPGRADE_RELEASE_READINESS.md).
+
 ## Shipped
 
 ### Documentation
@@ -39,4 +45,8 @@ The Caddy configuration serves only the new static presentation routes. Dynamic 
 
 ## Next phase
 
-DNS, Console, and Investment should be migrated progressively as Astro shells or component islands while their authenticated and data-processing backends remain unchanged. Each route must keep a backend fallback until its feature-level regression suite passes.
+DNS, Console, and Investment entry/public shells now exist in the repository.
+Remaining authenticated views should be scoped individually while their
+data-processing backends remain unchanged. Each migrated view must keep a
+backend fallback until its feature-level regression suite passes. Follow the
+current roadmap above for the pending reliability and documentation batch.
