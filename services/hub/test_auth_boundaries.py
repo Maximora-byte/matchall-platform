@@ -82,6 +82,7 @@ class AuthBoundaryTests(unittest.TestCase):
         for token in ("csrf-bob", ""):
             with self.subTest(token=token):
                 self.assertEqual(self.client.post("/notifications/preferences", data={"csrf_token": token}).status_code, 403)
+        self.assertEqual(self.client.post("/notifications/preferences", data={"email_enabled": "true"}).status_code, 403)
         with app.notify_db() as con:
             self.assertEqual(con.execute("SELECT count(*) FROM notification_preferences").fetchone()[0], 0)
 
