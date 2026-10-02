@@ -28,6 +28,19 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 os.umask(0o077)
 
+
+def positive_int_setting(name: str, default: str) -> int:
+    error = f"{name} must be a positive integer (>= 1)."
+    try:
+        value = int(os.getenv(name, default))
+    except ValueError:
+        # Never echo raw configuration values or the conversion exception.
+        raise ValueError(error) from None
+    if value < 1:
+        raise ValueError(error)
+    return value
+
+
 CONSOLE_URL = os.getenv("CONSOLE_URL", "https://console.maximoraverse.org").rstrip("/")
 STATUS_URL = os.getenv("STATUS_URL", "https://status.maximoraverse.org").rstrip("/")
 DOCS_URL = os.getenv("DOCS_URL", "https://docs.maximoraverse.org").rstrip("/")
@@ -38,7 +51,7 @@ SESSION_SECRET_FILE = os.getenv("SESSION_SECRET_FILE", "/run/secrets/session_sec
 DATA_DIR = Path(os.getenv("DATA_DIR", "/data"))
 SNAPSHOT_DIR = DATA_DIR / "snapshots"
 # Presentation freshness budget; confirm against the collector schedule at deployment.
-SNAPSHOT_STALE_AFTER_SECONDS = max(1, int(os.getenv("SNAPSHOT_STALE_AFTER_SECONDS", "900")))
+SNAPSHOT_STALE_AFTER_SECONDS = positive_int_setting("SNAPSHOT_STALE_AFTER_SECONDS", "900")
 STATUS_DB = DATA_DIR / "status" / "status.db"
 NOTIFY_DB = DATA_DIR / "notifications" / "notifications.db"
 DOCS_DIR = Path(os.getenv("DOCS_DIR", "/app/docs"))

@@ -33,11 +33,19 @@ Console responses are `private, no-store`.
 
 No database migration or collector format change is required. The legacy
 `{"generated_at": <unix seconds>, "users": [...]}` schema remains supported.
-`SNAPSHOT_STALE_AFTER_SECONDS` defaults to **900 seconds**. This is a display
-freshness budget, not a claim about the production collector cadence. The owner
-must verify the actual schedule and mount permissions before deployment and set
-an appropriate positive value. Missing/failing collectors need operator action;
-there is deliberately no web-triggered collector or sync button.
+`SNAPSHOT_STALE_AFTER_SECONDS` defaults to **900 seconds** when absent. A supplied
+value must parse as a positive integer (`>= 1`); empty, non-integer, zero, and
+negative values stop Hub at startup with a sanitized error naming the setting and
+accepted range. Values are never silently clamped. There is no additional upper
+limit, preserving existing positive integer configurations.
+
+The [Hub-only Compose override example](../../infrastructure/compose.hub.example.yaml)
+pins the value explicitly to `"900"`; apply it after the operator's real base Hub
+Compose file using the [infrastructure instructions](../../infrastructure/README.md).
+This is a display freshness budget, not a claim about the production collector
+cadence. The owner must verify the actual schedule and mount permissions before
+deployment and set an appropriate positive value. Missing/failing collectors need
+operator action; there is deliberately no web-triggered collector or sync button.
 
 Deploy only after explicit owner review/approval. Roll back the Hub code, template,
 and CSS together; no business-data rollback is needed. This change does not deploy
