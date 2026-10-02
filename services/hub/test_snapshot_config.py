@@ -26,6 +26,7 @@ IMPORT_APP = textwrap.dedent("""\
          patch("socket.socket.connect", side_effect=AssertionError("Unexpected network access")):
         # Load dependency metadata before denying application-level file reads.
         import fastapi
+        import monitoring
         with patch.object(Path, "read_text", autospec=True, side_effect=synthetic_secret) as read:
             try:
                 import app

@@ -6,3 +6,4 @@ markdown==3.8.2
 python-multipart==0.0.31
 pywebpush==2.0.3
 uvicorn==0.35.0
+dnspython==2.8.0
