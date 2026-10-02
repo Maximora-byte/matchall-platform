@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,13 +27,17 @@ func TestNewDirectClient_ZeroTimeoutKeepsClientDefaults(t *testing.T) {
 	require.NoError(t, err)
 	defer c.Close()
 
-	// go-redis fills its documented defaults in when nothing is set.
+	// Zero must leave the library defaults untouched, including when go-redis
+	// changes those defaults between versions.
+	baseline := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
+	defer baseline.Close()
+	defaults := baseline.Options()
 	opts := c.Options()
-	assert.Equal(t, 5*time.Second, opts.DialTimeout)
-	assert.Equal(t, 3*time.Second, opts.ReadTimeout)
-	assert.Equal(t, 3*time.Second, opts.WriteTimeout)
-	assert.Equal(t, 3, opts.MaxRetries)
-	assert.False(t, opts.ContextTimeoutEnabled)
+	assert.Equal(t, defaults.DialTimeout, opts.DialTimeout)
+	assert.Equal(t, defaults.ReadTimeout, opts.ReadTimeout)
+	assert.Equal(t, defaults.WriteTimeout, opts.WriteTimeout)
+	assert.Equal(t, defaults.MaxRetries, opts.MaxRetries)
+	assert.Equal(t, defaults.ContextTimeoutEnabled, opts.ContextTimeoutEnabled)
 }
 
 func TestNewFailoverClient_CommandTimeoutApplied(t *testing.T) {
