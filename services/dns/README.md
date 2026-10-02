@@ -50,3 +50,10 @@ Latest application backup at handoff: `/srv/personal-blog/backups/dns-platform/2
 - App backups: `/srv/personal-blog/backups/dns-platform/`; `matchall-dns-backup.timer` daily, SQLite online backup + integrity check + code/secrets/Caddy archive and hashes. Backups contain token encryption key; protect them.
 - Disable only new Caddy site and `docker compose -p matchall-dns -f compose.yaml stop`. Existing DNS resolver addresses do not depend on portal. Do not restore entire Authentik DB just to remove this new application; inspect scoped app/provider removal if needed.
 - Restore DB and encryption key together. Do not run `provision.py` or `configure_authentik.py` again without inspection; these assert creation-only.
+
+## Offline recovery verification
+
+See [the recovery rehearsal runbook](../../docs/dns-recovery-rehearsal.md) for the
+synthetic-tested SQLite restore verifier and current migration-5 backup sensitivity.
+This is tooling, not evidence of a production restore. The portal remains limited to
+one worker/replica; do not infer high availability from a passing offline rehearsal.

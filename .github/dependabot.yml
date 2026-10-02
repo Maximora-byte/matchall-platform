@@ -1,0 +1,110 @@
+version: 2
+
+updates:
+  - package-ecosystem: pip
+    directories:
+      - /services/dns
+      - /services/hub
+      - /services/mirrors
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    rebase-strategy: auto
+    labels:
+      - dependencies
+      - python
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      python-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directories:
+      - /apps/console-site
+      - /apps/cv-site
+      - /apps/dns-site
+      - /apps/docs-site
+      - /apps/entry-sites
+      - /apps/fuwari-site
+      - /apps/investment-site
+      - /apps/main-site
+      - /apps/mirrors-site
+      - /apps/status-site
+      - /vendor/moddns-matchall/app
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "03:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    rebase-strategy: auto
+    labels:
+      - dependencies
+      - javascript
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      javascript-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: gomod
+    directories:
+      - /services/dns-transports
+      - /vendor/moddns-matchall/api
+      - /vendor/moddns-matchall/blocklists
+      - /vendor/moddns-matchall/dnscheck
+      - /vendor/moddns-matchall/libs
+      - /vendor/moddns-matchall/proxy
+    schedule:
+      interval: weekly
+      day: wednesday
+      time: "03:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    rebase-strategy: auto
+    labels:
+      - dependencies
+      - go
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      go-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: thursday
+      time: "03:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    rebase-strategy: auto
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      actions-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
