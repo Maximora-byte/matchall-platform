@@ -90,6 +90,27 @@ jobs:
           path: apps/${{ matrix.app }}/test-results
           retention-days: 7
 
+  vendor-frontend:
+    needs: repository-hygiene
+    if: needs.repository-hygiene.outputs.vendor_frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: vendor/moddns-matchall/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: vendor/moddns-matchall/app/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run tsc
+      - run: npm test
+      - run: npm run build
+
   fuwari:
     needs: repository-hygiene
     if: needs.repository-hygiene.outputs.fuwari == 'true'
@@ -161,6 +182,7 @@ jobs:
       has_go_modules: ${{ steps.changes.outputs.has_go_modules }}
       fuwari: ${{ steps.changes.outputs.fuwari }}
       php: ${{ steps.changes.outputs.php }}
+      vendor_frontend: ${{ steps.changes.outputs.vendor_frontend }}
     steps:
       - uses: actions/checkout@v4
         with:
