@@ -104,8 +104,14 @@ Before running against approved endpoints, the operator must:
    outage from that actual second location. Do not let the primary host be the sole
    report store or notification sender
 
-No scheduler, alert receiver, external infrastructure, or status-feed ingestion is
-created here. An external runner installed on the same host is **not** independent.
+Optional Linux/systemd scheduling and a bounded watchdog are now provided in
+[`infrastructure/monitoring`](../infrastructure/monitoring/README.md). The watchdog
+atomically stores a sanitized cycle result and checks missing/stale/failed reports
+on a separate timer. An operator-supplied executable receives sanitized JSON alerts
+with a bounded timeout; acknowledgment and actual delivery remain separate gates.
+These examples install/enable nothing. No alert receiver, external infrastructure,
+or status-feed ingestion is created here. An external runner installed on the same
+host is **not** independent.
 Do not point a restart policy at upstream business-status failures; monitor `/readyz`
 for Hub-local trouble and the external report for externally observed availability.
 
