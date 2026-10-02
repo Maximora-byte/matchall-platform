@@ -29,7 +29,7 @@ jobs:
         working-directory: services/${{ matrix.service }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
           cache: pip
@@ -63,7 +63,7 @@ jobs:
         working-directory: apps/${{ matrix.app }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -90,6 +90,27 @@ jobs:
           path: apps/${{ matrix.app }}/test-results
           retention-days: 7
 
+  vendor-frontend:
+    needs: repository-hygiene
+    if: needs.repository-hygiene.outputs.vendor_frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: vendor/moddns-matchall/app
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: vendor/moddns-matchall/app/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run tsc
+      - run: npm test
+      - run: npm run build
+
   fuwari:
     needs: repository-hygiene
     if: needs.repository-hygiene.outputs.fuwari == 'true'
@@ -100,7 +121,7 @@ jobs:
         working-directory: apps/fuwari-site
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - run: corepack enable
@@ -132,7 +153,7 @@ jobs:
         working-directory: ${{ matrix.module }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: ${{ matrix.module }}/go.mod
           cache-dependency-path: ${{ matrix.module }}/go.sum
@@ -161,6 +182,7 @@ jobs:
       has_go_modules: ${{ steps.changes.outputs.has_go_modules }}
       fuwari: ${{ steps.changes.outputs.fuwari }}
       php: ${{ steps.changes.outputs.php }}
+      vendor_frontend: ${{ steps.changes.outputs.vendor_frontend }}
     steps:
       - uses: actions/checkout@v7
         with:
