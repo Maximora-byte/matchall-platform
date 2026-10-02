@@ -129,7 +129,7 @@ class EventSecurityTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_signed_malformed_json_is_rejected_without_mutation(self):
         for raw in (b"", b'{"id":', b'{"id":"event-1","title":"Secret diagnostic",}', b"\xff",
-                    b'{"id":' + b"1" * 5000 + b"}", b"[" * 2000):
+                    b'{"id":' + b"1" * 5000 + b"}", b"[" * 10000):
             with self.subTest(raw=raw):
                 await self.assert_invalid_payload(raw)
 
@@ -182,7 +182,7 @@ class EventSecurityTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_valid_current_mirrors_event_contract_is_accepted(self):
         response = await self.post_event(self.event("release:example:stable:1.0", severity="info",
-            title="Example 1.0 已发布", body="stable 通道已有新版本。",
+            title="Example 🚀 1.0 已发布", body="stable 通道已有新版本。",
             url="https://mirrors.example.invalid/project/example", audience="users", visibility="public",
             project="example", version="1.0", channel="stable", created_at=1))
         self.assertEqual(response.status_code, 200)
