@@ -604,14 +604,28 @@ def load_snapshot(name: str):
 
 
 def find_record(rows, user, *, subject=True, username=True, email=True):
+    user_sub = user.get("sub")
+    if not isinstance(user_sub, str) or not user_sub:
+        return None
+    rows = list(rows)
+    if subject:
+        matches = [row for row in rows if row.get("subject") == user_sub]
+        if matches:
+            return matches[0] if len(matches) == 1 else None
+    # Legacy snapshots (including Drive) can lack a shared subject. A fallback
+    # must be unique and must never override an explicitly conflicting subject.
+    user_name, user_email = user.get("preferred_username"), user.get("email")
+    matches = []
     for row in rows:
-        if subject and row.get("subject") and row.get("subject") == user.get("sub"):
-            return row
-        if username and row.get("username") and row.get("username") == user.get("preferred_username"):
-            return row
-        if email and row.get("email") and row.get("email", "").lower() == user.get("email", "").lower():
-            return row
-    return None
+        name_match = username and isinstance(user_name, str) and bool(user_name) and row.get("username") == user_name
+        row_email = row.get("email")
+        email_match = email and isinstance(user_email, str) and bool(user_email) and isinstance(row_email, str) and row_email.lower() == user_email.lower()
+        if name_match or email_match:
+            matches.append(row)
+    if len(matches) != 1:
+        return None
+    match = matches[0]
+    return match if not match.get("subject") or match["subject"] == user_sub else None
 
 
 def bytes_human(value):
@@ -875,6 +889,8 @@ def status_history(days: int = 30):
             AND m.starts_at<=c.checked_at AND (m.ends_at IS NULL OR m.ends_at>c.checked_at))
           GROUP BY service_key, day ORDER BY day ASC
         """, (cutoff,)).fetchall()
+        maintenance_rows = con.execute("""SELECT service_key,starts_at,ends_at FROM maintenance
+          WHERE starts_at<? AND COALESCE(ends_at,?)>?""", (now, now, cutoff)).fetchall()
     for row in rows:
         target = by_service.get(row["service_key"])
         if target is None:
@@ -886,8 +902,6 @@ def status_history(days: int = 30):
             "avg_latency": int(row["avg_latency"] or 0),
             "checks": total,
         })
-        maintenance_rows = con.execute("""SELECT service_key,starts_at,ends_at FROM maintenance
-          WHERE starts_at<? AND COALESCE(ends_at,?)>?""", (now, now, cutoff)).fetchall()
     expected_dates = [(first_day + timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(days)]
     for target in by_service.values():
         indexed = {row["date"]: row for row in target["days"]}
