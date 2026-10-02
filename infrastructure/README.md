@@ -7,6 +7,10 @@ remain outside Git.
 Any future deployment automation must require an explicit environment and a
 manual production approval. It must default to a local or staging target.
 
+Optional external probe schedules, freshness checks, and the operator-owned alert
+adapter contract are documented in [monitoring/README.md](monitoring/README.md).
+These examples require review and separate activation on an independent host.
+
 ## Hub snapshot freshness override
 
 `compose.hub.example.yaml` explicitly pins Hub's display freshness budget to

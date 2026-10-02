@@ -19,6 +19,10 @@ files/
 uploads/
 backups/
 logs/
+# The vendor log UI is source code, not runtime log data.
+!vendor/moddns-matchall/app/src/pages/logs/
+vendor/moddns-matchall/app/src/pages/logs/*
+!vendor/moddns-matchall/app/src/pages/logs/*.tsx
 *.log
 
 # Python
