@@ -1,0 +1,11 @@
+[Unit]
+Description=MatchAll opt-in external probe schedule
+
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=60s
+AccuracySec=5s
+Unit=matchall-probes.service
+
+[Install]
+WantedBy=timers.target
