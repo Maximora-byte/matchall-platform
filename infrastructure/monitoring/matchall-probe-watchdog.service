@@ -1,0 +1,20 @@
+[Unit]
+Description=MatchAll external probe freshness and alert adapter check
+
+[Service]
+Type=oneshot
+User=matchall-monitor
+Group=matchall-monitor
+WorkingDirectory=/opt/matchall-monitor/repository/services/hub
+ExecStart=/usr/bin/env /opt/matchall-monitor/venv/bin/python probe_watchdog.py check --state /var/lib/matchall-monitor/report.json --max-age 300 --alert-command /usr/local/libexec/matchall-monitor-alert
+TimeoutStartSec=25
+StateDirectory=matchall-monitor
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/matchall-monitor
+CapabilityBoundingSet=
+RestrictSUIDSGID=true
