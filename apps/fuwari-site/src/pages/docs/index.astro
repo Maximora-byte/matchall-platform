@@ -15,7 +15,7 @@ const order = [
 	"troubleshooting",
 ];
 const entries = await getCollection("docs");
-const docs = entries.sort((a, b) => order.indexOf(a.slug) - order.indexOf(b.slug));
+const docs = entries.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
 const groups = [
 	{ title: "开始使用", description: "先完成账户与基础安全设置。", slugs: ["getting-started", "account-security"] },
 	{ title: "核心服务", description: "配置文件同步、网络连接和通知。", slugs: ["drive-guide", "network-guide", "dns-guide", "notification-delivery"] },
@@ -42,8 +42,8 @@ const groups = [
 				<section class="docs-group" data-group={group.title}>
 					<div><h2 class="text-xl font-bold text-black/85 dark:text-white/85">{group.title}</h2><p class="mt-1 text-sm text-black/50 dark:text-white/50">{group.description}</p></div>
 					<div class="mt-4 grid gap-4 sm:grid-cols-2">
-						{group.slugs.map((slug) => docs.find((entry) => entry.slug === slug)).filter(Boolean).map((entry) => entry && (
-							<a href={`/docs/${entry.slug}/`} data-doc-card data-search={`${entry.data.title} ${entry.data.description}`} class="group rounded-2xl border border-black/10 dark:border-white/10 bg-black/[0.025] dark:bg-white/[0.035] p-5 transition hover:-translate-y-0.5 hover:border-[var(--primary)]/50">
+						{group.slugs.map((slug) => docs.find((entry) => entry.id === slug)).filter(Boolean).map((entry) => entry && (
+							<a href={`/docs/${entry.id}/`} data-doc-card data-search={`${entry.data.title} ${entry.data.description}`} class="group rounded-2xl border border-black/10 dark:border-white/10 bg-black/[0.025] dark:bg-white/[0.035] p-5 transition hover:-translate-y-0.5 hover:border-[var(--primary)]/50">
 								<div class="flex items-start justify-between gap-4"><div><h3 class="font-bold text-lg text-black/85 dark:text-white/85">{entry.data.title}</h3><p class="mt-2 text-sm leading-6 text-black/55 dark:text-white/55">{entry.data.description}</p></div><Icon name="material-symbols:arrow-forward-rounded" class="mt-1 shrink-0 text-xl text-[var(--primary)] transition group-hover:translate-x-1" /></div>
 							</a>
 						))}

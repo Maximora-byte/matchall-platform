@@ -1,7 +1,7 @@
 ---
 import Markdown from "@components/misc/Markdown.astro";
 import MainGridLayout from "@layouts/MainGridLayout.astro";
-import { getCollection, type CollectionEntry } from "astro:content";
+import { getCollection, type CollectionEntry, render } from "astro:content";
 import { Icon } from "astro-icon/components";
 
 const order = [
@@ -18,17 +18,17 @@ const order = [
 
 export async function getStaticPaths() {
 	const entries = await getCollection("docs");
-	return entries.map((entry) => ({ params: { slug: entry.slug }, props: { entry, entries } }));
+	return entries.map((entry) => ({ params: { slug: entry.id }, props: { entry, entries } }));
 }
 
 const { entry, entries } = Astro.props as { entry: CollectionEntry<"docs">; entries: CollectionEntry<"docs">[] };
-const docs = entries.sort((a, b) => order.indexOf(a.slug) - order.indexOf(b.slug));
-const index = docs.findIndex((item) => item.slug === entry.slug);
+const docs = entries.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+const index = docs.findIndex((item) => item.id === entry.id);
 const previous = docs[index - 1];
 const next = docs[index + 1];
-const { Content, headings } = await entry.render();
+const { Content, headings } = await render(entry);
 const updated = new Intl.DateTimeFormat("zh-CN", { dateStyle: "long", timeZone: "UTC" }).format(entry.data.lastUpdated);
-const readingMinutes = Math.max(2, Math.ceil(entry.body.replace(/<[^>]+>/g, "").length / 450));
+const readingMinutes = Math.max(2, Math.ceil((entry.body ?? "").replace(/<[^>]+>/g, "").length / 450));
 const jsonLd = {
 	"@context": "https://schema.org",
 	"@type": "TechArticle",
@@ -57,8 +57,8 @@ const jsonLd = {
 	</article>
 
 	<nav aria-label="文档翻页" class="mt-4 grid gap-4 sm:grid-cols-2">
-		{previous ? <a class="btn-card rounded-2xl p-4" href={`/docs/${previous.slug}/`}><small class="block text-black/40 dark:text-white/40">上一篇</small><strong>{previous.data.title}</strong></a> : <span></span>}
-		{next && <a class="btn-card rounded-2xl p-4 text-right" href={`/docs/${next.slug}/`}><small class="block text-black/40 dark:text-white/40">下一篇</small><strong>{next.data.title}</strong></a>}
+		{previous ? <a class="btn-card rounded-2xl p-4" href={`/docs/${previous.id}/`}><small class="block text-black/40 dark:text-white/40">上一篇</small><strong>{previous.data.title}</strong></a> : <span></span>}
+		{next && <a class="btn-card rounded-2xl p-4 text-right" href={`/docs/${next.id}/`}><small class="block text-black/40 dark:text-white/40">下一篇</small><strong>{next.data.title}</strong></a>}
 	</nav>
 
 	<style is:global>
