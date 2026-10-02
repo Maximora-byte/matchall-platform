@@ -33,6 +33,9 @@ Console responses are `private, no-store`.
 
 No database migration or collector format change is required. The legacy
 `{"generated_at": <unix seconds>, "users": [...]}` schema remains supported.
+The existing Network collector may emit explicit `null` for `online_count`;
+Console preserves the legacy zero display for that value. Missing fields,
+non-integer values, booleans, and negative counts still produce an error state.
 `SNAPSHOT_STALE_AFTER_SECONDS` defaults to **900 seconds** when absent. A supplied
 value must parse as a positive integer (`>= 1`); empty, non-integer, zero, and
 negative values stop Hub at startup with a sanitized error naming the setting and

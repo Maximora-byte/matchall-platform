@@ -661,7 +661,7 @@ CONSOLE_STATES = {
 
 def valid_console_record(record, source):
     valid = all(field in record and (
-        (field == "expired_at" and record[field] is None) or
+        (field in {"expired_at", "online_count"} and record[field] is None) or
         (type(record[field]) is int and (field == "quota" or record[field] >= 0)
          and (field != "expired_at" or record[field] <= 253402300799))
     ) for field in source["required_numbers"])
