@@ -215,14 +215,15 @@ class AuthPaymentTests(unittest.TestCase):
                 self.assertEqual(self.order_state()[1:], ([], 0))
 
     def test_invalid_stale_future_and_malformed_payment_signatures_are_rejected(self):
-        cases = ({"secret": "wrong"}, {"timestamp": self.now - 301}, {"timestamp": self.now + 301},
+        # Stay well outside the five-minute tolerance so wall-clock progress
+        # while the request is handled cannot turn a boundary case valid.
+        cases = ({"secret": "wrong"}, {"timestamp": self.now - 3600}, {"timestamp": self.now + 3600},
                  {"signature": ""}, {"signature": "t=not-a-number,v1=bad"})
         for kwargs in cases:
             with self.subTest(kwargs=kwargs):
+                before = self.order_state()
                 self.assertEqual(self.post_stripe(self.stripe_event(), **kwargs).status_code, 400)
-                order, grants, events = self.order_state()
-                self.assertEqual(order["status"], "pending")
-                self.assertEqual((grants, events), ([], 0))
+                self.assertEqual(self.order_state(), before)
 
     def test_unknown_order_rolls_back_receipt_for_safe_retry(self):
         event = self.stripe_event()
