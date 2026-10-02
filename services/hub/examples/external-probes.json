@@ -1,0 +1,7 @@
+{
+  "probes": [
+    {"name": "hub-readiness", "kind": "readiness", "url": "https://status.example.invalid/readyz"},
+    {"name": "dns-resolution", "kind": "doh", "url": "https://resolver.example.invalid/dns-query", "domain": "example.com"},
+    {"name": "drive-status", "kind": "nextcloud", "url": "https://drive.example.invalid/status.php"}
+  ]
+}
