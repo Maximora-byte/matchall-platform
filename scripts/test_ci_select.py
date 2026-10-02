@@ -93,8 +93,22 @@ class SelectionTests(unittest.TestCase):
         self.assertFalse(empty["php"])
         self.assertEqual(empty["python_services"], [])
 
-    def test_uncovered_vendor_frontend_does_not_add_unrelated_tests(self):
-        self.assertEqual(select_checks(["vendor/moddns-matchall/app/package.json"]), select_checks([]))
+    def test_vendor_frontend_changes_select_only_frontend(self):
+        for path in ("package.json", "package-lock.json", "src/App.tsx", "vite.config.ts", "env/.env.test"):
+            checks = select_checks(["vendor/moddns-matchall/app/" + path])
+            self.assertTrue(checks["vendor_frontend"])
+            self.assertEqual(checks["python_services"], [])
+            self.assertEqual(checks["astro_apps"], [])
+            self.assertEqual(checks["go_modules"], [])
+
+    def test_shared_vendor_configuration_selects_frontend(self):
+        self.assertTrue(select_checks(["vendor/moddns-matchall/.gitignore"])["vendor_frontend"])
+        self.assertTrue(select_checks(["vendor/moddns-matchall/fixtures/test.json"])["vendor_frontend"])
+        self.assertFalse(select_checks(["vendor/moddns-matchall/proxy/go.mod"])["vendor_frontend"])
+
+    def test_unrelated_pr_skips_frontend_and_full_runs_include_it(self):
+        self.assertFalse(select_checks(["services/dns/app.py"])["vendor_frontend"])
+        self.assertTrue(select_checks([], full=True)["vendor_frontend"])
 
     def test_workflow_selector_unknown_config_and_new_modules_run_all(self):
         for path in (
@@ -127,12 +141,34 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(json.loads(values["astro_apps"]), [])
         self.assertEqual(values["has_astro_apps"], "false")
         self.assertEqual(values["fuwari"], "false")
+        self.assertEqual(values["vendor_frontend"], "false")
         output = io.StringIO()
         write_outputs(select_checks(["apps/status-site/package.json"]), output)
         self.assertIn("has_astro_apps=true", output.getvalue())
 
 
 class GitDiffTests(unittest.TestCase):
+    def test_runtime_ignore_rules_keep_log_ui_source_trackable(self):
+        repository = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            for relative in (".gitignore", "vendor/moddns-matchall/.gitignore", "vendor/moddns-matchall/app/.gitignore"):
+                target = root / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text((repository / relative).read_text())
+            paths = [
+                "vendor/moddns-matchall/app/src/pages/logs/Logs.tsx",
+                "vendor/moddns-matchall/app/src/pages/logs/runtime.log",
+                "logs/runtime.log", "services/dns/backups/private.sqlite3",
+            ]
+            result = subprocess.run(
+                ["git", "-C", str(root), "check-ignore", "--no-index", "--stdin"],
+                input="\n".join(paths) + "\n", text=True, capture_output=True, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.splitlines(), paths[1:])
+
     def test_merge_base_ignores_new_base_changes_but_keeps_rename_and_delete_paths(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
