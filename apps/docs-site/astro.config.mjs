@@ -25,6 +25,7 @@ export default defineConfig({
         { label: '服务指南', items: [
           { label: 'Drive 同步与分享', slug: 'docs/drive-guide' },
           { label: 'Network 客户端与线路', slug: 'docs/network-guide' },
+          { label: 'DNS 配置入口与验证', slug: 'docs/dns-guide' },
           { label: 'Mirrors 下载与授权', slug: 'docs/mirrors-user' },
         ] },
         { label: '开发者', items: [{ label: 'Mirrors 发布指南', slug: 'docs/mirrors-developer' }] },

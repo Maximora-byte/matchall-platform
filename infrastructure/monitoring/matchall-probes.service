@@ -1,0 +1,22 @@
+[Unit]
+Description=MatchAll opt-in external probe cycle
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=matchall-monitor
+Group=matchall-monitor
+WorkingDirectory=/opt/matchall-monitor/repository/services/hub
+ExecStart=/usr/bin/env /opt/matchall-monitor/venv/bin/python probe_watchdog.py run --config /etc/matchall-monitor/probes.json --state /var/lib/matchall-monitor/report.json --timeout 220
+TimeoutStartSec=250
+StateDirectory=matchall-monitor
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/matchall-monitor
+CapabilityBoundingSet=
+RestrictSUIDSGID=true

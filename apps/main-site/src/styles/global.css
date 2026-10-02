@@ -38,7 +38,10 @@ a { color: inherit; text-decoration: none; }
 .hero { display: grid; min-height: 650px; grid-template-columns: minmax(0, 1fr) 430px; align-items: center; gap: 54px; padding: 82px 0 88px; }
 .hero-copy { position: relative; z-index: 2; }
 .status-pill { display: inline-flex; align-items: center; gap: 9px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.035); color: #cbd0db; font-size: 11px; }
-.status-pill span { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 14px var(--green); }
+.status-pill .status-dot { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.status-pill[data-status="operational"] .status-dot { background: var(--green); box-shadow: 0 0 14px var(--green); }
+.status-pill[data-status="degraded"] .status-dot, .status-pill[data-status="maintenance"] .status-dot { background: var(--orange); }
+.status-pill[data-status="partial_outage"] .status-dot, .status-pill[data-status="outage"] .status-dot { background: #eb7186; }
 .status-pill b { color: var(--text); font-weight: 760; }
 .eyebrow { margin: 25px 0 0; color: var(--cyan); font-size: 11px; font-weight: 820; letter-spacing: .16em; text-transform: uppercase; }
 h1 { max-width: 760px; margin: 18px 0 24px; font-size: clamp(58px, 7.8vw, 92px); font-weight: 610; line-height: .95; letter-spacing: -.068em; }
