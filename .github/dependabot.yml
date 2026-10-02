@@ -1,5 +1,8 @@
 version: 2
 
+# Keep version-update queues small; security updates have their own rules.
+# This is not a repository-wide cap and does not close existing PRs.
+
 updates:
   - package-ecosystem: pip
     directories:
@@ -11,8 +14,8 @@ updates:
       day: monday
       time: "03:00"
       timezone: Etc/UTC
-    open-pull-requests-limit: 5
-    rebase-strategy: auto
+    open-pull-requests-limit: 2
+    rebase-strategy: disabled
     labels:
       - dependencies
       - python
@@ -44,14 +47,21 @@ updates:
       day: tuesday
       time: "03:00"
       timezone: Etc/UTC
-    open-pull-requests-limit: 5
-    rebase-strategy: auto
+    open-pull-requests-limit: 2
+    rebase-strategy: disabled
     labels:
       - dependencies
       - javascript
     commit-message:
       prefix: chore(deps)
     groups:
+      javascript-major-by-dependency:
+        # One major upgrade per dependency across compatible app directories.
+        group-by: dependency-name
+        patterns:
+          - "*"
+        update-types:
+          - major
       javascript-minor-and-patch:
         patterns:
           - "*"
@@ -72,8 +82,8 @@ updates:
       day: wednesday
       time: "03:00"
       timezone: Etc/UTC
-    open-pull-requests-limit: 5
-    rebase-strategy: auto
+    open-pull-requests-limit: 2
+    rebase-strategy: disabled
     labels:
       - dependencies
       - go
@@ -94,8 +104,8 @@ updates:
       day: thursday
       time: "03:00"
       timezone: Etc/UTC
-    open-pull-requests-limit: 5
-    rebase-strategy: auto
+    open-pull-requests-limit: 2
+    rebase-strategy: disabled
     labels:
       - dependencies
       - github-actions
