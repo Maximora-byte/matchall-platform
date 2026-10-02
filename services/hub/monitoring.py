@@ -49,6 +49,11 @@ def dns_config(url: str, domain: str, expected_addresses: str = "") -> dict:
 
 
 def validate_public_url(url: str) -> None:
+    """Check URL syntax only, not destination IPs or DNS rebinding.
+
+    Trusted administrators must select trusted public HTTPS endpoints; this is
+    not an SSRF guard for URLs supplied by anonymous or untrusted users.
+    """
     try:
         parsed = urlsplit(url)
         if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
@@ -73,7 +78,7 @@ async def _run_probe(client: httpx.AsyncClient, spec: dict) -> ProbeResult:
         return ProbeResult(False, detail="unconfigured")
     kind = spec.get("kind", "http")
     params, query = None, None
-    headers = {"User-Agent": "MatchAll-Status/2.0"}
+    headers = {"User-Agent": "MatchAll-Status/2.0", "Accept-Encoding": "identity"}
     try:
         if kind == "doh":
             query = dns.message.make_query(spec["domain"], "A")
@@ -84,14 +89,18 @@ async def _run_probe(client: httpx.AsyncClient, spec: dict) -> ProbeResult:
             code = response.status_code
             if code not in spec.get("expect", [200]):
                 return ProbeResult(False, code, "unexpected_http_status")
+            # Reject encodings before any body iteration: HTTPX may otherwise
+            # decompress a whole transport chunk before applying our size limit.
+            if response.headers.get("content-encoding", "identity").strip().lower() != "identity":
+                return ProbeResult(False, code, "unexpected_content_encoding")
             # Plain HTTP checks intentionally claim reachability only.
             if kind == "http":
                 return ProbeResult(True, code)
             content = bytearray()
-            async for chunk in response.aiter_bytes(chunk_size=8192):
-                content.extend(chunk)
-                if len(content) > MAX_RESPONSE_BYTES:
+            async for chunk in response.aiter_raw(chunk_size=8192):
+                if len(content) + len(chunk) > MAX_RESPONSE_BYTES:
                     return ProbeResult(False, code, "response_too_large")
+                content.extend(chunk)
             if kind == "doh":
                 if response.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/dns-message":
                     return ProbeResult(False, code, "unexpected_content_type")

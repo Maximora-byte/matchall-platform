@@ -38,9 +38,19 @@ and records no failed sample until both settings are supplied:
 | `MONITOR_DNS_DOMAIN` | Operator-selected public DNS name for an A query |
 | `MONITOR_DNS_EXPECTED_ADDRESSES` | Optional comma-separated IPv4 allowlist; every returned A address must belong to it |
 
-URLs with credentials, query strings, fragments, non-443 ports, HTTP, or account-token
-paths are rejected. Partial/invalid configuration remains unknown and makes Hub
-readiness fail. Removing configuration makes the service unknown even if old samples
+Probe configuration comes from trusted administrators (Hub environment settings or
+an operator-managed local runner file), not anonymous URL input. Administrators must
+select trusted, credential-free **public HTTPS endpoints**. `validate_public_url`
+checks URL syntax only: it does not resolve or enforce public destination IPs, block
+private/loopback addresses, or prevent DNS rebinding. It is not an SSRF protection
+boundary for untrusted input. Endpoint ownership and DNS/network trust remain the
+administrator's responsibility; do not expose these settings to untrusted users.
+
+URLs with credentials, query strings, fragments, non-443 ports, or HTTP are rejected;
+the DNS resolver additionally requires the exact `/dns-query` path. Syntax validation
+cannot identify secrets in arbitrary runner URL paths, so administrators must not
+configure token-bearing paths. Partial/invalid configuration remains unknown and
+makes Hub readiness fail. Removing configuration makes the service unknown even if old samples
 exist. Unconfigured DNS means the overall status is not fully operational; this is an
 intentional indication of missing coverage, not a DNS outage.
 
@@ -55,8 +65,12 @@ covered. This monitor never provisions a synthetic or real account.
 
 Checks use only GET, TLS verification, no environment proxy, no cookies between
 checks, and no redirects. They have an 8-second I/O timeout and a 10-second whole-probe
-deadline. Semantic bodies are capped at 65,535 bytes. Only fixed reason codes are
-stored; public status never exposes resolver configuration, query names, raw responses,
+deadline. Requests send `Accept-Encoding: identity`; non-identity `Content-Encoding`
+responses fail before reading or decompressing their bodies, even if the server ignores
+that request header. Semantic bodies are read as raw bytes and capped at 65,535 bytes
+before accumulation (not after HTTPX decompression). Header-only reachability checks
+still do not read bodies. Only fixed reason codes are stored; public status never
+exposes resolver configuration, query names, raw responses,
 or transport exception text.
 
 ## Read-only business-contract scaffold
