@@ -7,10 +7,11 @@ import secrets
 import socket
 import ipaddress
 import sqlite3
+import tempfile
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 import boto3
@@ -197,6 +198,35 @@ def finalize_hosted_file(target: Path, project_slug: str, version: str, filename
     client.upload_file(str(target), S3_BUCKET, key, ExtraArgs={"ContentType": "application/octet-stream"})
     target.unlink(missing_ok=True)
     return "s3", key, ""
+
+
+async def store_release_upload(upload: UploadFile, project_slug: str, version: str, *, local_only: bool = False):
+    # The display filename/version must never choose a storage path. mkstemp
+    # creates a new, exclusive file (including when a candidate is a symlink).
+    filename = Path(upload.filename or "").name
+    if not filename or filename in {".", ".."}:
+        raise HTTPException(400, "invalid filename")
+    fd, name = tempfile.mkstemp(prefix="artifact-", dir=FILES_DIR)
+    target = Path(name)
+    digest = hashlib.sha256()
+    size = 0
+    try:
+        with os.fdopen(fd, "wb") as out:
+            while chunk := await upload.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_UPLOAD:
+                    raise HTTPException(413, "file too large")
+                digest.update(chunk)
+                out.write(chunk)
+        # Only a completely written file may be referenced by an artifact row.
+        if local_only:
+            provider, key, local_path = "local", "", str(target.relative_to(FILES_DIR))
+        else:
+            provider, key, local_path = finalize_hosted_file(target, project_slug, version, filename)
+        return filename, size, digest.hexdigest(), provider, key, local_path
+    except BaseException:
+        target.unlink(missing_ok=True)
+        raise
 
 
 serializer = URLSafeTimedSerializer(read_secret(SESSION_SECRET_FILE) or secrets.token_urlsafe(48), salt="matchall-mirrors")
@@ -431,6 +461,13 @@ def init_db():
             con.execute("ALTER TABLE artifacts ADD COLUMN storage_provider TEXT NOT NULL DEFAULT 'local'")
         if "storage_key" not in artifact_columns:
             con.execute("ALTER TABLE artifacts ADD COLUMN storage_key TEXT NOT NULL DEFAULT ''")
+        order_columns = {row[1] for row in con.execute("PRAGMA table_info(orders)")}
+        if "stripe_session_id" not in order_columns:
+            con.execute("ALTER TABLE orders ADD COLUMN stripe_session_id TEXT NOT NULL DEFAULT ''")
+        # Before this column, pending orders kept the Checkout Session in
+        # provider_ref, which is replaced by the PaymentIntent after payment.
+        con.execute("""UPDATE orders SET stripe_session_id=provider_ref
+          WHERE provider='stripe' AND stripe_session_id='' AND substr(provider_ref,1,3)='cs_'""")
         count = con.execute("SELECT COUNT(*) FROM projects").fetchone()[0]
         if count == 0:
             now = int(time.time())
@@ -613,6 +650,72 @@ def revoke_order(con, order_no: str):
     con.execute("UPDATE entitlements SET active=0 WHERE source_type='order' AND source_ref=?", (order_no,))
 
 
+def stripe_object_id(value) -> str:
+    # Stripe expandable references can be an ID or an expanded object.
+    value = value.get("id") if isinstance(value, dict) else value
+    return value if isinstance(value, str) else ""
+
+
+def stripe_amount_matches(obj, order) -> bool:
+    amount, currency = obj.get("amount_total"), obj.get("currency")
+    return (type(amount) is int and amount == order["amount_minor"]
+            and isinstance(currency, str) and currency.upper() == order["currency"].upper())
+
+
+def valid_stripe_checkout_url(value) -> bool:
+    if (not isinstance(value, str) or not value or "\\" in value
+            or any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in value)):
+        return False
+    try:
+        value.encode("utf-8")  # Reject lone surrogates before constructing the redirect header.
+        parsed = urlsplit(value)
+        # Permit Stripe-hosted and configured custom domains, but require an
+        # absolute HTTPS destination without credentials or a malformed port.
+        return (parsed.scheme == "https" and bool(parsed.hostname)
+                and parsed.username is None and parsed.password is None
+                and (parsed.port is None or 1 <= parsed.port <= 65535))
+    except ValueError:
+        return False
+
+
+def apply_stripe_checkout(con, obj):
+    metadata = obj.get("metadata") or {}
+    if not isinstance(metadata, dict):
+        raise HTTPException(400, "Invalid checkout metadata")
+    order_no = metadata.get("order_no") or obj.get("client_reference_id")
+    if not isinstance(order_no, str) or not order_no:
+        raise HTTPException(400, "Checkout order reference missing")
+    order = con.execute("SELECT * FROM orders WHERE order_no=?", (order_no,)).fetchone()
+    if not order:
+        raise HTTPException(404, "Order not found")
+    if (order["provider"] != "stripe" or not stripe_amount_matches(obj, order)
+            or obj.get("mode") != "payment"
+            or metadata.get("user_sub") != order["user_sub"]
+            or (obj.get("client_reference_id") and obj["client_reference_id"] != order_no)):
+        raise HTTPException(400, "Checkout does not match the order")
+    session_id, payment_intent = obj.get("id"), stripe_object_id(obj.get("payment_intent"))
+    if not isinstance(session_id, str) or not session_id or not payment_intent:
+        raise HTTPException(400, "Checkout payment binding missing")
+    stored_session = order["stripe_session_id"]
+    if not stored_session and order["provider_ref"].startswith("cs_"):
+        stored_session = order["provider_ref"]
+    if stored_session and stored_session != session_id:
+        raise HTTPException(400, "Checkout session does not match the order")
+    if order["status"] in {"paid", "refunded"}:
+        if order["provider_ref"] != payment_intent:
+            raise HTTPException(400, "Checkout payment does not match the order")
+        # Legacy paid orders may have lost their original session ID. They can
+        # acknowledge the same payment, but must never grant/renew access again.
+        return
+    if order["status"] != "pending" or not stored_session:
+        raise HTTPException(409, "Checkout binding is not ready")
+    if con.execute("SELECT 1 FROM orders WHERE provider='stripe' AND provider_ref=? AND order_no<>?",
+                   (payment_intent, order_no)).fetchone():
+        raise HTTPException(400, "Payment is already bound to another order")
+    con.execute("UPDATE orders SET stripe_session_id=? WHERE order_no=?", (stored_session, order_no))
+    mark_order_paid(con, order_no, payment_intent)
+
+
 @app.middleware("http")
 async def protect_admin_routes(request: Request, call_next):
     if request.url.path == "/admin" or request.url.path.startswith("/admin/"):
@@ -655,16 +758,19 @@ def audit(con, user_sub, action, *, team_id=None, project_id=None, detail=""):
 
 
 async def dispatch_release_event(project, version, channel):
+    # Hub only has broad users/public audiences, not project membership ACLs.
+    is_public = project.get("visibility") == "public"
     event_id = f"release:{project['slug']}:{channel}:{version}"
     event = {"id": event_id, "type": "release.published", "severity": "info",
              "title": f"{project['name']} {version} 已发布",
              "body": f"{channel} 通道已有新版本。", "url": f"{BASE_URL}/project/{project['slug']}",
-             "audience": "users", "project": project["slug"], "version": version, "channel": channel,
+             "audience": "users" if is_public else "private", "visibility": project.get("visibility", "private"),
+             "project": project["slug"], "version": version, "channel": channel,
              "created_at": int(time.time())}
     raw = json.dumps(event, separators=(",", ":"), ensure_ascii=False).encode()
     hub_secret = read_secret(HUB_EVENT_SECRET_FILE)
     async with httpx.AsyncClient(timeout=8.0, follow_redirects=False) as client:
-        if hub_secret:
+        if is_public and hub_secret:
             signature = hmac.new(hub_secret.encode(), raw, hashlib.sha256).hexdigest()
             try:
                 await client.post(HUB_EVENT_URL, content=raw, headers={"content-type": "application/json", "x-matchall-signature": f"sha256={signature}"})
@@ -1047,9 +1153,19 @@ async def checkout(product_id: int, request: Request, csrf_token: str = Form(...
         with db() as con:
             con.execute("UPDATE orders SET status='failed' WHERE order_no=?", (order_no,))
         raise HTTPException(502, "支付网关创建结账会话失败")
-    payload = result.json()
+    try:
+        payload = result.json()
+    except ValueError:
+        payload = None
+    if (not isinstance(payload, dict) or not isinstance(payload.get("id"), str) or not payload["id"]
+            or not valid_stripe_checkout_url(payload.get("url"))
+            or not stripe_amount_matches(payload, {"amount_minor": product["price_minor"], "currency": product["currency"]})):
+        with db() as con:
+            con.execute("UPDATE orders SET status='failed' WHERE order_no=?", (order_no,))
+        raise HTTPException(502, "支付网关返回的结账会话无效或金额、币种与订单不一致，请联系管理员")
     with db() as con:
-        con.execute("UPDATE orders SET provider_ref=? WHERE order_no=?", (payload.get("id", ""), order_no))
+        con.execute("UPDATE orders SET provider_ref=?,stripe_session_id=? WHERE order_no=?",
+                    (payload["id"], payload["id"], order_no))
     return RedirectResponse(payload["url"], status_code=303)
 
 
@@ -1071,24 +1187,36 @@ async def stripe_webhook(request: Request):
     expected = hmac.new(webhook_secret.encode(), f"{timestamp}.".encode() + body, hashlib.sha256).hexdigest()
     if abs(int(time.time()) - timestamp) > 300 or not any(hmac.compare_digest(expected, value) for value in fields.get("v1", [])):
         raise HTTPException(400, "invalid webhook signature")
-    event = json.loads(body)
+    try:
+        event = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        raise HTTPException(400, "Invalid webhook event")
+    if not isinstance(event, dict):
+        raise HTTPException(400, "Invalid webhook event")
     event_id = event.get("id", "")
     event_type = event.get("type", "")
-    obj = event.get("data", {}).get("object", {})
+    data = event.get("data")
+    obj = data.get("object") if isinstance(data, dict) else None
+    if not isinstance(event_id, str) or not event_id or not isinstance(event_type, str) or not event_type or not isinstance(obj, dict):
+        raise HTTPException(400, "Invalid webhook event")
     with db() as con:
         try:
             con.execute("INSERT INTO webhook_events(provider,event_id,event_type,received_at) VALUES('stripe',?,?,?)",
                         (event_id, event_type, int(time.time())))
         except sqlite3.IntegrityError:
             return {"received": True, "duplicate": True}
-        if event_type == "checkout.session.completed" and obj.get("payment_status") == "paid":
-            order_no = obj.get("metadata", {}).get("order_no") or obj.get("client_reference_id", "")
-            mark_order_paid(con, order_no, obj.get("payment_intent", ""))
+        if event_type in {"checkout.session.completed", "checkout.session.async_payment_succeeded"} and obj.get("payment_status") == "paid":
+            apply_stripe_checkout(con, obj)
         elif event_type == "charge.refunded":
-            payment_intent = obj.get("payment_intent", "")
-            order = con.execute("SELECT order_no FROM orders WHERE provider_ref=?", (payment_intent,)).fetchone()
-            if order:
-                revoke_order(con, order["order_no"])
+            payment_intent = stripe_object_id(obj.get("payment_intent"))
+            if not payment_intent:
+                raise HTTPException(400, "Refund payment binding missing")
+            orders = con.execute("SELECT order_no FROM orders WHERE provider='stripe' AND provider_ref=?", (payment_intent,)).fetchall()
+            if len(orders) != 1:
+                # Refunds can arrive before checkout completion; roll back the
+                # receipt so Stripe can retry after the payment is bound.
+                raise HTTPException(409, "Refund payment is not bound to an order")
+            revoke_order(con, orders[0]["order_no"])
     return {"received": True}
 
 
@@ -1215,13 +1343,8 @@ async def developer_release(request: Request, csrf_token: str = Form(...), proje
         project=con.execute("SELECT * FROM projects WHERE slug=?",(valid_slug(project_slug),)).fetchone()
         if not project or team_role(con,project["team_id"],user) not in {"owner","editor"}: raise HTTPException(403,"Editor required")
     if upload and upload.filename:
-        filename=Path(upload.filename).name; target_dir=FILES_DIR/project["slug"]/re.sub(r"[^A-Za-z0-9._-]","_",version); target_dir.mkdir(parents=True,exist_ok=True); target=target_dir/filename; digest=hashlib.sha256()
-        with target.open("wb") as out:
-            while chunk:=await upload.read(1024*1024):
-                size+=len(chunk)
-                if size>MAX_UPLOAD: target.unlink(missing_ok=True); raise HTTPException(413,"file too large")
-                digest.update(chunk); out.write(chunk)
-        sha256=digest.hexdigest(); storage_provider,storage_key,local_path=finalize_hosted_file(target,project["slug"],version,filename); external_url=""
+        filename,size,sha256,storage_provider,storage_key,local_path = await store_release_upload(upload,project["slug"],version)
+        external_url=""
     elif external_url.startswith("https://"):
         if project["visibility"] == "private" or project["access_mode"] == "paid":
             raise HTTPException(400,"私有或付费项目必须上传托管文件，不能使用永久外链")
@@ -1234,7 +1357,7 @@ async def developer_release(request: Request, csrf_token: str = Form(...), proje
             release=con.execute("SELECT id FROM releases WHERE project_id=? AND version=? AND channel=?",(project["id"],version.strip(),channel)).fetchone()
             con.execute("INSERT INTO artifacts(release_id,os,arch,filename,local_path,external_url,size,sha256,created_at,storage_provider,storage_key) VALUES(?,?,?,?,?,?,?,?,?,?,?)",(release["id"],os_name.lower(),arch.lower(),filename,local_path,external_url,size,sha256,now,storage_provider,storage_key))
             con.execute("UPDATE projects SET updated_at=? WHERE id=?",(now,project["id"])); audit(con,user["sub"],"release.drafted",team_id=project["team_id"],project_id=project["id"],detail=f"{version}:{channel}:{rollout_percentage}")
-    except Exception:
+    except BaseException:
         if local_path:(FILES_DIR/local_path).unlink(missing_ok=True)
         raise
     return RedirectResponse("/developer",status_code=303)
@@ -1272,35 +1395,34 @@ async def developer_release_upload(request: Request, project_slug: str = Form(..
         if not token: raise HTTPException(401,"invalid developer token")
         project=con.execute("SELECT * FROM projects WHERE slug=? AND team_id=?",(valid_slug(project_slug),token["team_id"])).fetchone()
         if not project: raise HTTPException(404,"project not found")
-    filename=Path(upload.filename).name; target_dir=FILES_DIR/project["slug"]/re.sub(r"[^A-Za-z0-9._-]","_",version); target_dir.mkdir(parents=True,exist_ok=True)
-    target=target_dir/(secrets.token_hex(6)+"-"+filename); digest=hashlib.sha256(); size=0
-    with target.open("wb") as out:
-        while chunk:=await upload.read(1024*1024):
-            size+=len(chunk)
-            if size>MAX_UPLOAD: target.unlink(missing_ok=True); raise HTTPException(413,"file too large")
-            digest.update(chunk); out.write(chunk)
-    provider,key,local_path=finalize_hosted_file(target,project["slug"],version,filename); now=int(time.time()); rollout=max(1,min(rollout_percentage,100))
-    with db() as con:
-        con.execute("""INSERT INTO releases(project_id,version,channel,notes,published_at,status,rollout_percentage) VALUES(?,?,?,?,?,'draft',?)
-          ON CONFLICT(project_id,version,channel) DO UPDATE SET notes=excluded.notes,published_at=excluded.published_at,status='draft',rollout_percentage=excluded.rollout_percentage""",
-          (project["id"],version.strip(),channel,notes[:10000],now,rollout))
-        release=con.execute("SELECT id FROM releases WHERE project_id=? AND version=? AND channel=?",(project["id"],version.strip(),channel)).fetchone()
-        con.execute("INSERT INTO artifacts(release_id,os,arch,filename,local_path,size,sha256,created_at,storage_provider,storage_key) VALUES(?,?,?,?,?,?,?,?,?,?)",
-          (release["id"],os_name.lower(),arch.lower(),filename,local_path,size,digest.hexdigest(),now,provider,key))
-        audit(con,token["created_by"],"release.upload.drafted",team_id=token["team_id"],project_id=project["id"],detail=f"{version}:{channel}:{rollout}")
-    return {"code":0,"data":{"project":project["slug"],"version":version,"channel":channel,"status":"draft","sha256":digest.hexdigest(),"size":size,"storage":provider}}
+    filename,size,sha256,provider,key,local_path = await store_release_upload(upload,project["slug"],version)
+    now=int(time.time()); rollout=max(1,min(rollout_percentage,100))
+    try:
+        with db() as con:
+            con.execute("""INSERT INTO releases(project_id,version,channel,notes,published_at,status,rollout_percentage) VALUES(?,?,?,?,?,'draft',?)
+              ON CONFLICT(project_id,version,channel) DO UPDATE SET notes=excluded.notes,published_at=excluded.published_at,status='draft',rollout_percentage=excluded.rollout_percentage""",
+              (project["id"],version.strip(),channel,notes[:10000],now,rollout))
+            release=con.execute("SELECT id FROM releases WHERE project_id=? AND version=? AND channel=?",(project["id"],version.strip(),channel)).fetchone()
+            con.execute("INSERT INTO artifacts(release_id,os,arch,filename,local_path,size,sha256,created_at,storage_provider,storage_key) VALUES(?,?,?,?,?,?,?,?,?,?)",
+              (release["id"],os_name.lower(),arch.lower(),filename,local_path,size,sha256,now,provider,key))
+            audit(con,token["created_by"],"release.upload.drafted",team_id=token["team_id"],project_id=project["id"],detail=f"{version}:{channel}:{rollout}")
+    except BaseException:
+        if local_path:
+            (FILES_DIR/local_path).unlink(missing_ok=True)
+        raise
+    return {"code":0,"data":{"project":project["slug"],"version":version,"channel":channel,"status":"draft","sha256":sha256,"size":size,"storage":provider}}
 
 
 @app.post("/developer/releases/{release_id}/approve")
 async def developer_approve_release(release_id: int, request: Request, csrf_token: str = Form(...)):
     user=require_user(request); csrf(request,csrf_token); now=int(time.time())
     with db() as con:
-        row=con.execute("SELECT r.*,p.slug,p.name,p.team_id FROM releases r JOIN projects p ON p.id=r.project_id WHERE r.id=?",(release_id,)).fetchone()
+        row=con.execute("SELECT r.*,p.slug,p.name,p.team_id,p.visibility FROM releases r JOIN projects p ON p.id=r.project_id WHERE r.id=?",(release_id,)).fetchone()
         if not row or team_role(con,row["team_id"],user)!="owner": raise HTTPException(403,"Owner required")
         if row["status"]!="draft": raise HTTPException(409,"release is not a draft")
         con.execute("UPDATE releases SET status='published',approved_by=?,approved_at=?,published_at=? WHERE id=?",(user["sub"],now,now,release_id))
         audit(con,user["sub"],"release.approved",team_id=row["team_id"],project_id=row["project_id"],detail=f"{row['version']}:{row['channel']}")
-        project={"id":row["project_id"],"slug":row["slug"],"name":row["name"]}
+        project={"id":row["project_id"],"slug":row["slug"],"name":row["name"],"visibility":row["visibility"]}
     await dispatch_release_event(project,row["version"],row["channel"])
     return RedirectResponse("/developer",status_code=303)
 
@@ -1419,18 +1541,9 @@ async def create_release(request: Request, csrf_token: str = Form(...), project_
     now = int(time.time())
     local_path = ""; filename = ""; size = 0; sha256 = expected_sha256.strip().lower()
     if upload and upload.filename:
-        filename = Path(upload.filename).name
-        safe_dir = FILES_DIR / valid_slug(project_slug) / re.sub(r"[^A-Za-z0-9._-]", "_", version)
-        safe_dir.mkdir(parents=True, exist_ok=True)
-        target = safe_dir / filename
-        digest = hashlib.sha256()
-        with target.open("wb") as out:
-            while chunk := await upload.read(1024 * 1024):
-                size += len(chunk)
-                if size > MAX_UPLOAD:
-                    target.unlink(missing_ok=True); raise HTTPException(413, "file too large")
-                digest.update(chunk); out.write(chunk)
-        sha256 = digest.hexdigest(); local_path = str(target.relative_to(FILES_DIR)); external_url = ""
+        filename, size, sha256, _, _, local_path = await store_release_upload(
+            upload, valid_slug(project_slug), version, local_only=True)
+        external_url = ""
     elif external_url:
         if not external_url.startswith("https://"): raise HTTPException(400, "external URL must use https")
         filename = Path(external_url.split("?", 1)[0]).name or f"{project_slug}-{version}"
@@ -1447,7 +1560,7 @@ async def create_release(request: Request, csrf_token: str = Form(...), project_
             release = con.execute("SELECT id FROM releases WHERE project_id=? AND version=? AND channel=?", (project["id"], version.strip(), channel)).fetchone()
             con.execute("INSERT INTO artifacts(release_id,os,arch,filename,local_path,external_url,size,sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?)", (release["id"], os_name.strip().lower(), arch.strip().lower(), filename, local_path, external_url.strip(), size, sha256, now))
             con.execute("UPDATE projects SET updated_at=? WHERE id=?", (now, project["id"]))
-    except Exception:
+    except BaseException:
         if local_path: (FILES_DIR / local_path).unlink(missing_ok=True)
         raise
     return RedirectResponse(f"/project/{project_slug}", status_code=303)

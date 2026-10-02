@@ -228,6 +228,10 @@ def init_notify_db():
 
 
 def enqueue_delivery_jobs(con, notification_id: int):
+    notification = con.execute("SELECT audience FROM notifications WHERE id=?", (notification_id,)).fetchone()
+    # Hub has only broad audiences; it cannot resolve private recipients.
+    if not notification or notification["audience"] not in ("users", "public"):
+        return
     now = int(time.time())
     chat_id = read_secret(TELEGRAM_CHAT_ID_FILE)
     if read_secret(TELEGRAM_BOT_TOKEN_FILE) and chat_id:
@@ -302,6 +306,7 @@ async def delivery_loop():
         with notify_db() as con:
             rows = con.execute("""SELECT j.*,n.title,n.body,n.action_url FROM delivery_jobs j
               JOIN notifications n ON n.id=j.notification_id WHERE j.status='pending' AND j.next_attempt_at<=?
+              AND n.audience IN ('users','public')
               ORDER BY j.id LIMIT 20""", (now,)).fetchall()
         for row in rows:
             try:
@@ -682,14 +687,28 @@ def console_service_summaries(user, now=None):
 
 
 def find_record(rows, user, *, subject=True, username=True, email=True):
+    user_sub = user.get("sub")
+    if not isinstance(user_sub, str) or not user_sub:
+        return None
+    rows = list(rows)
+    if subject:
+        matches = [row for row in rows if row.get("subject") == user_sub]
+        if matches:
+            return matches[0] if len(matches) == 1 else None
+    # Legacy snapshots (including Drive) can lack a shared subject. A fallback
+    # must be unique and must never override an explicitly conflicting subject.
+    user_name, user_email = user.get("preferred_username"), user.get("email")
+    matches = []
     for row in rows:
-        if subject and row.get("subject") and row.get("subject") == user.get("sub"):
-            return row
-        if username and row.get("username") and row.get("username") == user.get("preferred_username"):
-            return row
-        if email and row.get("email") and row.get("email", "").lower() == user.get("email", "").lower():
-            return row
-    return None
+        name_match = username and isinstance(user_name, str) and bool(user_name) and row.get("username") == user_name
+        row_email = row.get("email")
+        email_match = email and isinstance(user_email, str) and bool(user_email) and isinstance(row_email, str) and row_email.lower() == user_email.lower()
+        if name_match or email_match:
+            matches.append(row)
+    if len(matches) != 1:
+        return None
+    match = matches[0]
+    return match if not match.get("subject") or match["subject"] == user_sub else None
 
 
 def bytes_human(value):
@@ -950,6 +969,8 @@ def status_history(days: int = 30):
             AND m.starts_at<=c.checked_at AND (m.ends_at IS NULL OR m.ends_at>c.checked_at))
           GROUP BY service_key, day ORDER BY day ASC
         """, (cutoff,)).fetchall()
+        maintenance_rows = con.execute("""SELECT service_key,starts_at,ends_at FROM maintenance
+          WHERE starts_at<? AND COALESCE(ends_at,?)>?""", (now, now, cutoff)).fetchall()
     for row in rows:
         target = by_service.get(row["service_key"])
         if target is None:
@@ -961,8 +982,6 @@ def status_history(days: int = 30):
             "avg_latency": int(row["avg_latency"] or 0),
             "checks": total,
         })
-        maintenance_rows = con.execute("""SELECT service_key,starts_at,ends_at FROM maintenance
-          WHERE starts_at<? AND COALESCE(ends_at,?)>?""", (now, now, cutoff)).fetchall()
     expected_dates = [(first_day + timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(days)]
     for target in by_service.values():
         indexed = {row["date"]: row for row in target["days"]}
@@ -1189,15 +1208,44 @@ def notification_create(request: Request, csrf_token: str = Form(...), title: st
 
 @app.post("/internal/events")
 async def internal_event(request: Request):
+    secret = read_secret(EVENT_SECRET_FILE)
+    if not secret:
+        raise HTTPException(503, "Event authentication is not configured")
     raw = await request.body()
-    expected = hmac.new(read_secret(EVENT_SECRET_FILE).encode(), raw, hashlib.sha256).hexdigest()
+    expected = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
     supplied = request.headers.get("x-matchall-signature", "").removeprefix("sha256=")
-    if not expected or not secrets.compare_digest(expected, supplied):
+    if not secrets.compare_digest(expected, supplied):
         raise HTTPException(403, "Invalid signature")
-    event = json.loads(raw)
+    try:
+        event = json.loads(raw)
+    except (ValueError, RecursionError):
+        # Includes invalid encoding/syntax, oversized integers and nesting.
+        raise HTTPException(400, "Invalid event payload") from None
+    # Authenticate the original bytes before validating their shape. Keep the
+    # legacy defaults, but never pass missing/structured values to storage.
+    if not isinstance(event, dict):
+        raise HTTPException(400, "Invalid event payload")
+    if any(not isinstance(event.get(field), str) or not event[field].strip()
+           for field in ("id", "title")):
+        raise HTTPException(400, "Invalid event payload")
+    if any(field in event and not isinstance(event[field], str)
+           for field in ("type", "severity", "body", "url", "audience", "visibility")):
+        raise HTTPException(400, "Invalid event payload")
+    try:
+        for field in ("id", "title", "type", "severity", "body", "url", "audience", "visibility"):
+            if field in event:
+                event[field].encode("utf-8")
+    except UnicodeEncodeError:
+        # JSON escapes can contain lone surrogates that SQLite cannot store.
+        raise HTTPException(400, "Invalid event payload") from None
+    audience = event.get("audience", "users")
+    if audience not in ("users", "public"):
+        raise HTTPException(400, "Unsupported notification audience")
+    if event.get("type") == "release.published" and event.get("visibility") == "private":
+        raise HTTPException(400, "Private release notifications are not supported")
     publish_notification(event_key=event["id"], kind=event.get("type", "event"), severity=event.get("severity", "info"),
                          title=event["title"], body=event.get("body", ""), action_url=event.get("url", ""),
-                         audience=event.get("audience", "users"))
+                         audience=audience)
     return {"accepted": True}
 
 
