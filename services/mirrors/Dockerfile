@@ -6,6 +6,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
+COPY release_events.py .
 COPY github_sync.py .
 COPY templates ./templates
 COPY static ./static
