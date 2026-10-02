@@ -105,6 +105,10 @@ Evidence: ../moddns-production/config-acceptance, config_acceptance.py, config_p
 
 ## Opt-in query history — 2026-09-26
 
+**Historical release record, superseded by migration 5.** The RAM-only statements
+below describe the migration-4 release, not the current implementation. See the
+current persistence and backup boundary immediately after this record.
+
 `/queries` and `/api/queries` are session-owner-only (including administrators). Default OFF; explicit consent enables subsequent admitted, valid requests. SQLite migration 4 persists only enabled/retention preferences. Query rows remain bounded in one-worker RAM: 2,000 per account, 20,000 globally, oldest evicted; 1h/24h TTL with 30s pruning, also pruned on access. Restart clears all rows but preserves consent preference. No client IP, token or full answer stored. These controls do not change legacy upstream logging. Rankings reflect retained samples only.
 
 Clear/disable increments an epoch to reject pre-clear in-flight writes. Disable clears synchronously. Quick rule actions show a normal CSRF-protected prefilled form; preview never writes policy or changes routing. Trusted proxy markers alone classify blocking; NXDOMAIN and upstream failure remain distinct. Before-validation rejections are excluded. Aggregate counters remain independent. Content is never in SQLite/Mongo/Redis or backups. Do not add Uvicorn workers without redesigning this RAM store and the existing limiter. Roll back gateway image to `matchall-dns:config-production`; migration 4 can remain.
@@ -112,3 +116,27 @@ Clear/disable increments an epoch to reject pre-clear in-flight writes. Disable 
 84 tests passed. Isolated real responses/blocking/failure verified; the chosen .invalid probe returned SERVFAIL, not NXDOMAIN (NXDOMAIN classification separately covered in tests). With logging enabled, 60 QPS for 45 seconds yielded 2,700/2,700 valid responses, P95 15ms, P99 179ms; cap remained 2,000. This is tested load, not maximum capacity.
 
 Desktop/mobile browser and public synthetic opt-in/clear/disable/rankings passed. Real account fingerprints and remote policies unchanged, real log-enabled0/routed0. Stage restart removed tmpfs SQL too, so persistence was verified in lifecycle tests, not that live-stage restart.
+## Current query history and backup boundary — migration 5
+
+The current `query_history.py` persists opted-in query rows in the SQLite
+`query_history` table. History remains OFF by default and requires explicit consent.
+It survives process restarts; the historical RAM limits and restart-clears-history
+claim above apply only to migration 4. No client IP, credential or full DNS answer
+is stored by this feature.
+
+Retention values are `3600` (one hour), `86400` (24 hours) and `0` (no automatic
+expiry). Cleanup operates on current rows; `0` does not imply a bounded history or
+automatic database-size cap. Consent preferences and clear/disable coordination
+still rely on process-local state. Keep one Uvicorn worker and one replica.
+
+Clear deletes the owner's current rows. Disable also clears them and rejects
+pre-disable in-flight records. Neither operation erases already-created database
+backups. A SQLite online-backup snapshot can include opted-in domains, timestamps
+and outcomes, along with identity/session/token material. Treat these bundles as
+private data: apply the approved access, encryption, off-host handling, expiration
+and deletion policy to backup copies too. No production policy or user retention
+setting is changed by this documentation correction.
+
+See [the current recovery and sensitive-data boundary](../../docs/dns-recovery-rehearsal.md#current-sensitive-data-not-historical-assumptions).
+A passing offline verifier does not prove backup-key pairing, remote-backend
+restoration or production recoverability.

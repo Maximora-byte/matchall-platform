@@ -13,11 +13,12 @@ import subprocess
 import threading
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, closing
 from pathlib import Path
 from urllib.parse import urlencode, urlparse
 
 import httpx
+from monitoring import dns_config, run_probe
 import markdown
 from pywebpush import webpush
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -28,6 +29,19 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 os.umask(0o077)
 
+
+def positive_int_setting(name: str, default: str) -> int:
+    error = f"{name} must be a positive integer (>= 1)."
+    try:
+        value = int(os.getenv(name, default))
+    except ValueError:
+        # Never echo raw configuration values or the conversion exception.
+        raise ValueError(error) from None
+    if value < 1:
+        raise ValueError(error)
+    return value
+
+
 CONSOLE_URL = os.getenv("CONSOLE_URL", "https://console.maximoraverse.org").rstrip("/")
 STATUS_URL = os.getenv("STATUS_URL", "https://status.maximoraverse.org").rstrip("/")
 DOCS_URL = os.getenv("DOCS_URL", "https://docs.maximoraverse.org").rstrip("/")
@@ -37,6 +51,8 @@ OIDC_CLIENT_SECRET_FILE = os.getenv("OIDC_CLIENT_SECRET_FILE", "/run/secrets/oid
 SESSION_SECRET_FILE = os.getenv("SESSION_SECRET_FILE", "/run/secrets/session_secret")
 DATA_DIR = Path(os.getenv("DATA_DIR", "/data"))
 SNAPSHOT_DIR = DATA_DIR / "snapshots"
+# Presentation freshness budget; confirm against the collector schedule at deployment.
+SNAPSHOT_STALE_AFTER_SECONDS = positive_int_setting("SNAPSHOT_STALE_AFTER_SECONDS", "900")
 STATUS_DB = DATA_DIR / "status" / "status.db"
 NOTIFY_DB = DATA_DIR / "notifications" / "notifications.db"
 DOCS_DIR = Path(os.getenv("DOCS_DIR", "/app/docs"))
@@ -89,6 +105,35 @@ SERVICES = [
     {"key": "mirrors", "name": "软件镜像", "name_en": "Mirrors", "category": "distribution", "url": "https://mirrors.maximoraverse.org/", "probe": "http://mirrors:8000/healthz", "expect": [200], "threshold": 900, "check_type": "应用健康端点", "scope": "验证 Mirrors 应用健康端点；不创建发布，不下载大文件，也不验证付费授权全过程。", "help_url": "https://blog.maximoraverse.org/docs/mirrors-user/"},
     {"key": "network", "name": "网络服务", "name_en": "Network", "category": "network", "url": "https://proxyservice.maximoraverse.org/", "probe": "http://xboard:7001/api/v1/guest/comm/config", "expect": [200], "threshold": 1000, "check_type": "只读公共配置 API", "scope": "验证公共配置 API 可响应；不发起购买，不验证节点连通性、订阅更新或端到端流量。", "help_url": "https://blog.maximoraverse.org/docs/network-guide/"},
 ]
+
+# Scope is machine-readable so a liveness result is never an end-to-end claim.
+for _service in SERVICES:
+    _service["coverage_level"] = "liveness" if _service["key"] in {"account", "mirrors"} else "http_reachability"
+    _service["configured"] = True
+    _service["configuration_state"] = "configured"
+    _service["business_availability"] = "not_verified"
+    if _service["key"] == "drive":
+        _service["kind"] = "nextcloud"
+        _service["coverage_level"] = "read_only_contract"
+        _service["scope"] = "验证公开状态字段 installed=true、maintenance=false、needsDbUpgrade=false；不验证登录、上传、下载或分享全过程。"
+SERVICES.append({"key": "dns", "name": "DNS 解析", "name_en": "DNS Resolution", "category": "network",
+    "url": "https://dns.maximoraverse.org/", "threshold": 1200,
+    "check_type": "DNS over HTTPS A 查询", "coverage_level": "dns_resolution",
+    "business_availability": "not_verified",
+    "scope": "仅向显式配置的公共解析器查询指定域名并校验 A 响应；未配置时未知。不覆盖账户网关、过滤策略、DoT/DoQ 或多地域可用性。",
+    "help_url": "https://docs.maximoraverse.org/",
+    **dns_config(os.getenv("MONITOR_DNS_DOH_URL", ""), os.getenv("MONITOR_DNS_DOMAIN", ""),
+                 os.getenv("MONITOR_DNS_EXPECTED_ADDRESSES", ""))})
+
+# Process-local readiness, intentionally separate from monitored service health.
+BACKGROUND_PROGRESS = {}
+BACKGROUND_TASKS = {}
+BACKGROUND_ERRORS = set()
+
+
+def mark_progress(name):
+    BACKGROUND_PROGRESS[name] = time.monotonic()
+
 
 I18N = {
     "zh": {"console": "统一用户中心", "status": "服务状态", "logout": "退出", "login": "使用 MatchAll 账户登录", "skip": "跳到主要内容", "account": "账户", "privacy": "隐私", "terms": "条款", "contact": "联系", "anon_title": "一个账户，管理全部服务。", "anon_desc": "统一查看云存储、网络套餐、软件授权和服务运行状态。Console 只读取汇总信息，不保存业务密码。", "view_status": "查看服务状态", "overall_ok": "所有服务运行正常", "overall_slow": "部分服务响应较慢", "overall_down": "部分服务暂时不可用", "status_desc": "每分钟从业务网络内部执行真实健康探测；状态需要连续两次失败才会标记为中断。", "incident_history": "事件记录", "no_incident": "暂无服务事件", "no_incident_desc": "监控开始后没有记录到连续故障。", "hours": "24小时"},
@@ -226,6 +271,10 @@ def init_notify_db():
 
 
 def enqueue_delivery_jobs(con, notification_id: int):
+    notification = con.execute("SELECT audience FROM notifications WHERE id=?", (notification_id,)).fetchone()
+    # Hub has only broad audiences; it cannot resolve private recipients.
+    if not notification or notification["audience"] not in ("users", "public"):
+        return
     now = int(time.time())
     chat_id = read_secret(TELEGRAM_CHAT_ID_FILE)
     if read_secret(TELEGRAM_BOT_TOKEN_FILE) and chat_id:
@@ -296,12 +345,15 @@ async def deliver_job(job):
 
 async def delivery_loop():
     while True:
+        mark_progress("delivery")
         now = int(time.time())
         with notify_db() as con:
             rows = con.execute("""SELECT j.*,n.title,n.body,n.action_url FROM delivery_jobs j
               JOIN notifications n ON n.id=j.notification_id WHERE j.status='pending' AND j.next_attempt_at<=?
+              AND n.audience IN ('users','public')
               ORDER BY j.id LIMIT 20""", (now,)).fetchall()
         for row in rows:
+            mark_progress("delivery")
             try:
                 await deliver_job(row)
                 with notify_db() as con:
@@ -327,6 +379,8 @@ def public_status(con, service: dict, now: int | None = None):
     maintenance = active_maintenance(con, service["key"], now)
     if maintenance:
         return "maintenance", maintenance
+    if not service.get("configured", True):
+        return "unknown", None
     rows = con.execute("SELECT checked_at,ok,latency_ms,status_code,detail FROM checks WHERE service_key=? ORDER BY checked_at DESC LIMIT 3", (service["key"],)).fetchall()
     if not rows or now - int(rows[0]["checked_at"]) > STALE_AFTER_SECONDS:
         return "unknown", None
@@ -367,18 +421,13 @@ def effective_state(con, key: str):
 
 
 async def probe_once():
-    async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=8.0, trust_env=False) as client:
         for service in SERVICES:
+            if not service.get("configured", True):
+                continue
             started = time.perf_counter()
-            ok, code, detail = False, 0, ""
-            try:
-                response = await client.get(service["probe"], headers={"User-Agent": "MatchAll-Status/1.0"})
-                code = response.status_code
-                ok = code in service["expect"]
-                if not ok:
-                    detail = f"HTTP {code}"
-            except Exception as exc:
-                detail = exc.__class__.__name__
+            result = await run_probe(client, service)
+            ok, code, detail = result.ok, result.code, result.detail
             latency = max(1, int((time.perf_counter() - started) * 1000))
             now = int(time.time())
             with status_db() as con:
@@ -401,10 +450,17 @@ async def probe_once():
 
 
 async def probe_loop():
-    await probe_once()
     while True:
-        await asyncio.sleep(60)
-        await probe_once()
+        try:
+            await probe_once()
+            mark_progress("probes")
+            BACKGROUND_ERRORS.discard("probes")
+        except Exception:
+            # A DB/notification failure must not silently kill monitoring forever.
+            # Do not refresh progress until a complete successful cycle; /readyz
+            # becomes stale if failures persist. Never log endpoint/exception text.
+            BACKGROUND_ERRORS.add("probes")
+        await asyncio.sleep(PROBE_INTERVAL_SECONDS)
 
 
 @asynccontextmanager
@@ -413,13 +469,20 @@ async def lifespan(_: FastAPI):
     SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
     init_status_db()
     init_notify_db()
-    task = asyncio.create_task(probe_loop())
-    delivery_task = asyncio.create_task(delivery_loop())
+    BACKGROUND_PROGRESS.clear()
+    BACKGROUND_ERRORS.clear()
+    BACKGROUND_TASKS.update(probes=asyncio.create_task(probe_loop()),
+                            delivery=asyncio.create_task(delivery_loop()))
     try:
         yield
     finally:
-        task.cancel()
-        delivery_task.cancel()
+        tasks = list(BACKGROUND_TASKS.values())
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        BACKGROUND_TASKS.clear()
+        BACKGROUND_PROGRESS.clear()
+        BACKGROUND_ERRORS.clear()
 
 
 app = FastAPI(title="MatchAll Hub", docs_url=None, redoc_url=None, lifespan=lifespan)
@@ -597,21 +660,111 @@ def load_docs():
 
 
 def load_snapshot(name: str):
+    """Read existing local snapshots without confusing missing/error with no account."""
     try:
-        return json.loads((SNAPSHOT_DIR / f"{name}.json").read_text())
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {"generated_at": 0, "users": []}
+        payload = json.loads((SNAPSHOT_DIR / f"{name}.json").read_text())
+    except FileNotFoundError:
+        return {"generated_at": None, "users": [], "read_state": "missing"}
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return {"generated_at": None, "users": [], "read_state": "error"}
+    if not isinstance(payload, dict):
+        return {"generated_at": None, "users": [], "read_state": "error"}
+    generated_at, rows = payload.get("generated_at"), payload.get("users")
+    valid_time = type(generated_at) is int and 0 < generated_at <= 253402300799
+    valid_rows = isinstance(rows, list) and all(
+        isinstance(row, dict) and any(isinstance(row.get(key), str) and row[key] for key in ("subject", "username", "email"))
+        and all(row.get(key) is None or isinstance(row.get(key), str) for key in ("subject", "username", "email"))
+        for row in rows
+    )
+    return {"generated_at": generated_at if valid_time else None,
+            "users": rows if valid_rows else [],
+            "read_state": "ok" if valid_time and valid_rows else "error"}
+
+
+CONSOLE_SOURCES = {
+    "drive": {"snapshot": "nextcloud", "name": "MatchAll Drive", "icon": "D",
+              "url": "https://drive.maximoraverse.org/login", "action": "打开网盘",
+              "guide": "drive-guide", "required_numbers": ("used", "quota"), "flag": "enabled"},
+    "network": {"snapshot": "xboard", "name": "MatchAll Network", "icon": "N",
+                "url": "https://proxyservice.maximoraverse.org/login", "action": "管理网络服务",
+                "guide": "network-guide", "required_numbers": ("used", "transfer_enable", "expired_at", "online_count", "device_limit"), "flag": "banned"},
+    "mirrors": {"snapshot": "mirrors", "name": "MatchAll Mirrors", "icon": "M",
+                "url": "https://mirrors.maximoraverse.org/account", "action": "管理软件授权",
+                "guide": "mirrors-user", "required_numbers": ("active_entitlements", "active_tokens", "order_count", "paid_orders")},
+}
+CONSOLE_STATES = {
+    "linked": ("汇总正常", "已关联账户的只读汇总；不代表服务健康或已获得付费权限。"),
+    "unlinked": ("未关联", "本次完整快照中未找到匹配账户。请进入原服务确认登录与开通情况，再等待下一次同步。"),
+    "restricted": ("账户受限", "快照显示账户停用或受限，请在原服务核对；Console 无法解除限制。"),
+    "stale": ("数据过期", "最新快照已超出同步时效，无法确认当前账户状态。请在原服务查看最新数据。"),
+    "error": ("同步异常", "快照无法读取或数据不完整，暂不展示汇总。此提示不代表业务服务发生故障。"),
+    "missing": ("等待同步", "尚未收到该服务的快照，无法判断账户是否关联。"),
+}
+
+
+def valid_console_record(record, source):
+    valid = all(field in record and (
+        (field in {"expired_at", "online_count"} and record[field] is None) or
+        (type(record[field]) is int and (field == "quota" or record[field] >= 0)
+         and (field != "expired_at" or record[field] <= 253402300799))
+    ) for field in source["required_numbers"])
+    flag = source.get("flag")
+    valid = valid and (not flag or (flag in record and type(record[flag]) in (bool, int) and record[flag] in (0, 1)))
+    return valid and (source["snapshot"] != "xboard" or isinstance(record.get("plan_name"), str))
+
+
+def console_service_summaries(user, now=None):
+    now = int(time.time()) if now is None else now
+    result = []
+    for key, source in CONSOLE_SOURCES.items():
+        snapshot = load_snapshot(source["snapshot"])
+        generated_at = snapshot["generated_at"]
+        state = snapshot["read_state"]
+        record = None
+        if state == "ok":
+            if not all(valid_console_record(row, source) for row in snapshot["users"]):
+                state = "error"
+            elif generated_at > now + 60:
+                state = "error"
+            elif now - generated_at > SNAPSHOT_STALE_AFTER_SECONDS:
+                state = "stale"
+            else:
+                record = find_record(snapshot["users"], user, subject=key != "drive")
+                state = "linked" if record else "unlinked"
+                if record:
+                    record = {**record, **{field: record[field] or 0 for field in source["required_numbers"]}}
+                    if (key == "drive" and not record["enabled"]) or (key == "network" and record["banned"]):
+                        state = "restricted"
+        label, detail = CONSOLE_STATES[state]
+        result.append({**source, "key": key, "state": state, "label": label, "detail": detail,
+                       "generated_at": generated_at, "record": record,
+                       "fresh": state in {"linked", "unlinked", "restricted"}})
+    return result
 
 
 def find_record(rows, user, *, subject=True, username=True, email=True):
+    user_sub = user.get("sub")
+    if not isinstance(user_sub, str) or not user_sub:
+        return None
+    rows = list(rows)
+    if subject:
+        matches = [row for row in rows if row.get("subject") == user_sub]
+        if matches:
+            return matches[0] if len(matches) == 1 else None
+    # Legacy snapshots (including Drive) can lack a shared subject. A fallback
+    # must be unique and must never override an explicitly conflicting subject.
+    user_name, user_email = user.get("preferred_username"), user.get("email")
+    matches = []
     for row in rows:
-        if subject and row.get("subject") and row.get("subject") == user.get("sub"):
-            return row
-        if username and row.get("username") and row.get("username") == user.get("preferred_username"):
-            return row
-        if email and row.get("email") and row.get("email", "").lower() == user.get("email", "").lower():
-            return row
-    return None
+        name_match = username and isinstance(user_name, str) and bool(user_name) and row.get("username") == user_name
+        row_email = row.get("email")
+        email_match = email and isinstance(user_email, str) and bool(user_email) and isinstance(row_email, str) and row_email.lower() == user_email.lower()
+        if name_match or email_match:
+            matches.append(row)
+    if len(matches) != 1:
+        return None
+    match = matches[0]
+    return match if not match.get("subject") or match["subject"] == user_sub else None
 
 
 def bytes_human(value):
@@ -694,6 +847,33 @@ def healthz():
     return {"status": "ok"}
 
 
+@app.get("/readyz")
+def readyz():
+    """Hub readiness only: not upstream business health or external reachability."""
+    reasons = []
+    now = time.monotonic()
+    for name in ("probes", "delivery"):
+        task = BACKGROUND_TASKS.get(name)
+        progress = BACKGROUND_PROGRESS.get(name)
+        if task is None or task.done():
+            reasons.append(name + "_task_stopped")
+        elif progress is None or not 0 <= now - progress <= STALE_AFTER_SECONDS:
+            reasons.append(name + "_heartbeat_stale")
+        if name in BACKGROUND_ERRORS:
+            reasons.append(name + "_cycle_failed")
+    for name, path, table in (("status", STATUS_DB, "checks"), ("notifications", NOTIFY_DB, "delivery_jobs")):
+        try:
+            with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=1)) as con:
+                con.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone()
+        except (sqlite3.Error, OSError):
+            reasons.append(name + "_database_unavailable")
+    if any(service.get("configuration_state") == "invalid" for service in SERVICES):
+        reasons.append("probe_configuration_invalid")
+    return JSONResponse({"ready": not reasons, "scope": "hub_background_tasks_and_database_reads",
+                         "reasons": reasons}, status_code=503 if reasons else 200,
+                        headers={"Cache-Control": "no-store"})
+
+
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
     return Response(content=FAVICON_SVG, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
@@ -739,16 +919,13 @@ def root(request: Request):
 def console_page(request: Request):
     user = get_user(request)
     services, _ = status_summary()
-    if not user:
-        return render("console.html", request, user=None, services=services, network=None, drive=None, mirrors=None, synced_at=0)
-    xboard = load_snapshot("xboard")
-    nextcloud = load_snapshot("nextcloud")
-    mirror = load_snapshot("mirrors")
-    network = find_record(xboard.get("users", []), user)
-    drive = find_record(nextcloud.get("users", []), user, subject=False)
-    mirrors = find_record(mirror.get("users", []), user)
-    synced_at = min([x for x in [xboard.get("generated_at", 0), nextcloud.get("generated_at", 0), mirror.get("generated_at", 0)] if x] or [0])
-    return render("console.html", request, user=user, services=services, network=network, drive=drive, mirrors=mirrors, synced_at=synced_at)
+    summaries = console_service_summaries(user) if user else []
+    response = render("console.html", request, user=user, services=services,
+                      summaries=summaries, docs_url=DOCS_URL,
+                      fresh_sources=sum(item["fresh"] for item in summaries),
+                      snapshot_stale_after_seconds=SNAPSHOT_STALE_AFTER_SECONDS)
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 @app.get("/login")
@@ -791,7 +968,7 @@ async def callback(request: Request, code: str = "", state: str = ""):
     session = {"sub": claims["sub"], "preferred_username": claims.get("preferred_username") or claims.get("nickname", ""),
                "name": claims.get("name", ""), "email": claims.get("email", ""), "groups": claims.get("groups", []),
                "csrf": secrets.token_urlsafe(24)}
-    response = RedirectResponse("/", status_code=303)
+    response = RedirectResponse("/console", status_code=303)
     response.delete_cookie("console_oidc")
     response.set_cookie("console_session", serializer.dumps(session), max_age=86400 * 7, secure=True, httponly=True, samesite="lax")
     return response
@@ -843,17 +1020,23 @@ def status_page(request: Request):
 
 
 @app.get("/api/status")
-def status_api():
+def status_api(request: Request = None):
+    # Public read-only summary: allow only the two first-party landing origins.
+    # Never enable credentialed CORS or widen access to other Hub routes.
+    headers = {"Cache-Control": "public, max-age=30", "Vary": "Origin"}
+    origin = request.headers.get("origin") if request is not None else None
+    if origin in {"https://www.maximoraverse.org", "https://maximoraverse.org"}:
+        headers["Access-Control-Allow-Origin"] = origin
     services, incidents = status_summary()
     fields = ["key", "name", "name_en", "category", "url", "status", "state", "uptime", "uptime_30d",
               "sample_count_24h", "sample_count_30d", "avg_latency", "latency_window", "last_checked_at",
               "last_success_at", "stale", "probe_region", "probe_interval_seconds", "check_type", "scope",
               "help_url", "maintenance", "successful_samples_30d", "monitoring_started_at", "coverage_start_at",
               "coverage_end_at", "expected_samples_30d", "coverage_ratio_30d", "coverage_complete_30d",
-              "maintenance_seconds_30d"]
+              "maintenance_seconds_30d", "coverage_level", "business_availability", "configured", "configuration_state"]
     return JSONResponse({"schema_version": 2, "generated_at": int(time.time()), "stale_after_seconds": STALE_AFTER_SECONDS,
                          "services": [{k: x.get(k) for k in fields} for x in services], "incidents": incidents},
-                        headers={"Cache-Control": "public, max-age=30"})
+                        headers=headers)
 
 
 @app.get("/api/status/history")
@@ -875,6 +1058,8 @@ def status_history(days: int = 30):
             AND m.starts_at<=c.checked_at AND (m.ends_at IS NULL OR m.ends_at>c.checked_at))
           GROUP BY service_key, day ORDER BY day ASC
         """, (cutoff,)).fetchall()
+        maintenance_rows = con.execute("""SELECT service_key,starts_at,ends_at FROM maintenance
+          WHERE starts_at<? AND COALESCE(ends_at,?)>?""", (now, now, cutoff)).fetchall()
     for row in rows:
         target = by_service.get(row["service_key"])
         if target is None:
@@ -886,8 +1071,6 @@ def status_history(days: int = 30):
             "avg_latency": int(row["avg_latency"] or 0),
             "checks": total,
         })
-        maintenance_rows = con.execute("""SELECT service_key,starts_at,ends_at FROM maintenance
-          WHERE starts_at<? AND COALESCE(ends_at,?)>?""", (now, now, cutoff)).fetchall()
     expected_dates = [(first_day + timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(days)]
     for target in by_service.values():
         indexed = {row["date"]: row for row in target["days"]}
@@ -1114,15 +1297,44 @@ def notification_create(request: Request, csrf_token: str = Form(...), title: st
 
 @app.post("/internal/events")
 async def internal_event(request: Request):
+    secret = read_secret(EVENT_SECRET_FILE)
+    if not secret:
+        raise HTTPException(503, "Event authentication is not configured")
     raw = await request.body()
-    expected = hmac.new(read_secret(EVENT_SECRET_FILE).encode(), raw, hashlib.sha256).hexdigest()
+    expected = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
     supplied = request.headers.get("x-matchall-signature", "").removeprefix("sha256=")
-    if not expected or not secrets.compare_digest(expected, supplied):
+    if not secrets.compare_digest(expected, supplied):
         raise HTTPException(403, "Invalid signature")
-    event = json.loads(raw)
+    try:
+        event = json.loads(raw)
+    except (ValueError, RecursionError):
+        # Includes invalid encoding/syntax, oversized integers and nesting.
+        raise HTTPException(400, "Invalid event payload") from None
+    # Authenticate the original bytes before validating their shape. Keep the
+    # legacy defaults, but never pass missing/structured values to storage.
+    if not isinstance(event, dict):
+        raise HTTPException(400, "Invalid event payload")
+    if any(not isinstance(event.get(field), str) or not event[field].strip()
+           for field in ("id", "title")):
+        raise HTTPException(400, "Invalid event payload")
+    if any(field in event and not isinstance(event[field], str)
+           for field in ("type", "severity", "body", "url", "audience", "visibility")):
+        raise HTTPException(400, "Invalid event payload")
+    try:
+        for field in ("id", "title", "type", "severity", "body", "url", "audience", "visibility"):
+            if field in event:
+                event[field].encode("utf-8")
+    except UnicodeEncodeError:
+        # JSON escapes can contain lone surrogates that SQLite cannot store.
+        raise HTTPException(400, "Invalid event payload") from None
+    audience = event.get("audience", "users")
+    if audience not in ("users", "public"):
+        raise HTTPException(400, "Unsupported notification audience")
+    if event.get("type") == "release.published" and event.get("visibility") == "private":
+        raise HTTPException(400, "Private release notifications are not supported")
     publish_notification(event_key=event["id"], kind=event.get("type", "event"), severity=event.get("severity", "info"),
                          title=event["title"], body=event.get("body", ""), action_url=event.get("url", ""),
-                         audience=event.get("audience", "users"))
+                         audience=audience)
     return {"accepted": True}
 
 

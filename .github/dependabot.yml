@@ -1,0 +1,120 @@
+version: 2
+
+# Keep version-update queues small; security updates have their own rules.
+# This is not a repository-wide cap and does not close existing PRs.
+
+updates:
+  - package-ecosystem: pip
+    directories:
+      - /services/dns
+      - /services/hub
+      - /services/mirrors
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 2
+    rebase-strategy: disabled
+    labels:
+      - dependencies
+      - python
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      python-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directories:
+      - /apps/console-site
+      - /apps/cv-site
+      - /apps/dns-site
+      - /apps/docs-site
+      - /apps/entry-sites
+      - /apps/fuwari-site
+      - /apps/investment-site
+      - /apps/main-site
+      - /apps/mirrors-site
+      - /apps/status-site
+      - /vendor/moddns-matchall/app
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "03:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 2
+    rebase-strategy: disabled
+    labels:
+      - dependencies
+      - javascript
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      javascript-major-by-dependency:
+        # One major upgrade per dependency across compatible app directories.
+        group-by: dependency-name
+        patterns:
+          - "*"
+        update-types:
+          - major
+      javascript-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: gomod
+    directories:
+      - /services/dns-transports
+      - /vendor/moddns-matchall/api
+      - /vendor/moddns-matchall/blocklists
+      - /vendor/moddns-matchall/dnscheck
+      - /vendor/moddns-matchall/libs
+      - /vendor/moddns-matchall/proxy
+    schedule:
+      interval: weekly
+      day: wednesday
+      time: "03:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 2
+    rebase-strategy: disabled
+    labels:
+      - dependencies
+      - go
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      go-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: thursday
+      time: "03:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 2
+    rebase-strategy: disabled
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      actions-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
