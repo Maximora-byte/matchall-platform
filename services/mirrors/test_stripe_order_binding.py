@@ -193,12 +193,12 @@ class StripeOrderBindingTests(unittest.TestCase):
         self.assertEqual(self.state(), before)
         self.assertEqual(self.post(self.event()).status_code, 200)
 
-    def checkout(self, **fields):
+    def checkout(self, *, provider_response=None, **fields):
         self.client.cookies.set("mirror_session", app.serializer.dumps({"sub": "bob", "preferred_username": "bob", "csrf": "csrf-bob"}))
         payload = {"id": "cs_created", "amount_total": 1500, "currency": "usd", "url": "https://checkout.example.invalid/session", **fields}
         provider = AsyncMock()
         provider.__aenter__.return_value = provider
-        provider.post.return_value = Mock(status_code=200, json=lambda: payload)
+        provider.post.return_value = provider_response if provider_response is not None else Mock(status_code=200, json=lambda: payload)
         with patch.object(app.httpx, "AsyncClient", return_value=provider):
             response = self.client.post(f"/checkout/{self.product}", data={"csrf_token": "csrf-bob"}, follow_redirects=False)
         with app.db() as con:
@@ -221,6 +221,50 @@ class StripeOrderBindingTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 502)
                 self.assertNotIn("location", response.headers)
                 self.assertEqual(order["status"], "failed")
+
+    def assert_checkout_failed_without_binding(self, response, order):
+        self.assertEqual(response.status_code, 502)
+        self.assertNotIn("location", response.headers)
+        self.assertEqual((order["status"], order["provider_ref"], order["stripe_session_id"]), ("failed", "", ""))
+        with app.db() as con:
+            self.assertEqual(con.execute("SELECT count(*) FROM entitlements WHERE user_sub='bob'").fetchone()[0], 0)
+            self.assertEqual(con.execute("SELECT count(*) FROM webhook_events").fetchone()[0], 0)
+
+    def test_checkout_non_json_response_fails_without_saving_session(self):
+        for body in ("<html>Bad gateway</html>", "", "{invalid"):
+            with self.subTest(body=body):
+                response, order, _ = self.checkout(provider_response=app.httpx.Response(200, text=body))
+                self.assert_checkout_failed_without_binding(response, order)
+        response, order, _ = self.checkout(provider_response=app.httpx.Response(200, content=b"\xff"))
+        self.assert_checkout_failed_without_binding(response, order)
+
+    def test_checkout_non_object_json_response_fails_without_saving_session(self):
+        for payload in (None, [], "unexpected", 123):
+            with self.subTest(payload=payload):
+                response, order, _ = self.checkout(provider_response=app.httpx.Response(200, content=json.dumps(payload)))
+                self.assert_checkout_failed_without_binding(response, order)
+
+    def test_checkout_missing_or_invalid_url_fails_without_saving_session(self):
+        payload = {"id": "cs_created", "amount_total": 1500, "currency": "usd"}
+        response, order, _ = self.checkout(provider_response=app.httpx.Response(200, json=payload))
+        self.assert_checkout_failed_without_binding(response, order)
+        for url in (None, "", {}, 123, "/session", "//checkout.example.invalid/session", "http://checkout.example.invalid/session",
+                    "javascript:alert(1)", "https://", "https://[invalid", "https://checkout.example.invalid:bad/session",
+                    "https://checkout.example.invalid:65536/session", "https://user:password@checkout.example.invalid/session",
+                    "https://checkout.example.invalid\\session", "https://checkout.example.invalid/\nlocation", " https://checkout.example.invalid/session",
+                    "https://checkout.example.invalid/\ud800"):
+            with self.subTest(url=url):
+                response, order, _ = self.checkout(url=url)
+                self.assert_checkout_failed_without_binding(response, order)
+
+    def test_checkout_accepts_https_checkout_and_custom_domain_urls(self):
+        for url in ("https://checkout.stripe.com/c/pay/cs_test_synthetic#synthetic-fragment",
+                    "https://pay.example.invalid/checkout?session=synthetic"):
+            with self.subTest(url=url):
+                response, order, _ = self.checkout(url=url)
+                self.assertEqual(response.status_code, 303)
+                self.assertEqual(response.headers["location"], url)
+                self.assertEqual((order["status"], order["provider_ref"], order["stripe_session_id"]), ("pending", "cs_created", "cs_created"))
 
 
 if __name__ == "__main__":

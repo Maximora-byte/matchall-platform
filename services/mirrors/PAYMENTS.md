@@ -8,6 +8,8 @@ For a paid Checkout event, Mirrors checks the saved order's Stripe provider, int
 
 Checkout creation also verifies returned amount/currency before redirecting the customer. Local product pricing must agree with the configured Stripe Price. Tax, discount, adaptive-currency pricing and subscription flows that change this fixed-price contract require a separately reviewed implementation; mismatches fail explicitly rather than granting access or silently treating the price as valid.
 
+The creation response must be a JSON object with a nonempty session ID and an absolute HTTPS checkout URL. Missing or malformed URLs (including credentials, whitespace/control characters and invalid ports) and non-JSON responses fail with 502, mark the local order failed, and do not save a session binding or redirect. Stripe-hosted and configured custom-domain URLs are supported; this format check is not a domain ownership check.
+
 `checkout.session.completed` and `checkout.session.async_payment_succeeded` share these checks and require `payment_status=paid`. Unpaid, zero-payment (`no_payment_required`) and unrelated event types do not grant access. The Checkout object supports an expandable PaymentIntent reference, so both its ID string and expanded object's ID are accepted. These shapes follow the [Checkout Session reference](https://docs.stripe.com/api/checkout/sessions/object) and [event-type reference](https://docs.stripe.com/api/events/types).
 
 ## Retries and refunds

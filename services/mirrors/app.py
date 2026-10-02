@@ -10,7 +10,7 @@ import sqlite3
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 import boto3
@@ -632,6 +632,22 @@ def stripe_amount_matches(obj, order) -> bool:
             and isinstance(currency, str) and currency.upper() == order["currency"].upper())
 
 
+def valid_stripe_checkout_url(value) -> bool:
+    if (not isinstance(value, str) or not value or "\\" in value
+            or any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in value)):
+        return False
+    try:
+        value.encode("utf-8")  # Reject lone surrogates before constructing the redirect header.
+        parsed = urlsplit(value)
+        # Permit Stripe-hosted and configured custom domains, but require an
+        # absolute HTTPS destination without credentials or a malformed port.
+        return (parsed.scheme == "https" and bool(parsed.hostname)
+                and parsed.username is None and parsed.password is None
+                and (parsed.port is None or 1 <= parsed.port <= 65535))
+    except ValueError:
+        return False
+
+
 def apply_stripe_checkout(con, obj):
     metadata = obj.get("metadata") or {}
     if not isinstance(metadata, dict):
@@ -1104,12 +1120,16 @@ async def checkout(product_id: int, request: Request, csrf_token: str = Form(...
         with db() as con:
             con.execute("UPDATE orders SET status='failed' WHERE order_no=?", (order_no,))
         raise HTTPException(502, "支付网关创建结账会话失败")
-    payload = result.json()
+    try:
+        payload = result.json()
+    except ValueError:
+        payload = None
     if (not isinstance(payload, dict) or not isinstance(payload.get("id"), str) or not payload["id"]
+            or not valid_stripe_checkout_url(payload.get("url"))
             or not stripe_amount_matches(payload, {"amount_minor": product["price_minor"], "currency": product["currency"]})):
         with db() as con:
             con.execute("UPDATE orders SET status='failed' WHERE order_no=?", (order_no,))
-        raise HTTPException(502, "支付会话金额或币种与订单不一致，请联系管理员")
+        raise HTTPException(502, "支付网关返回的结账会话无效或金额、币种与订单不一致，请联系管理员")
     with db() as con:
         con.execute("UPDATE orders SET provider_ref=?,stripe_session_id=? WHERE order_no=?",
                     (payload["id"], payload["id"], order_no))
