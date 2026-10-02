@@ -1,1 +1,1 @@
-{"name":"matchall-investment-site","private":true,"type":"module","scripts":{"check":"astro check","build":"astro build"},"dependencies":{"@astrojs/check":"^0.9.10","astro":"^7.3.5","lightweight-charts":"^5.0.9","typescript":"^5.9.3"}}
+{"name":"matchall-investment-site","private":true,"type":"module","scripts":{"check":"astro check","build":"astro build"},"dependencies":{"@astrojs/check":"^0.9.10","astro":"^7.3.5","lightweight-charts":"^5.2.1","typescript":"^5.9.3"}}
