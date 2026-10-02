@@ -48,10 +48,11 @@ def select_checks(paths, *, full=False):
             "go_modules": list(GO_MODULES),
             "fuwari": True,
             "php": True,
+            "vendor_frontend": True,
         }
 
     python, astro, go = set(), set(), set()
-    fuwari = php = False
+    fuwari = php = vendor_frontend = False
     for path in paths:
         if path.startswith(".github/workflows/") or path in {
             "scripts/ci_select.py", "scripts/test_ci_select.py",
@@ -73,6 +74,7 @@ def select_checks(paths, *, full=False):
                 go.add(module)
         fuwari |= path.startswith("apps/fuwari-site/")
         php |= path.startswith("wordpress/")
+        vendor_frontend |= path.startswith("vendor/moddns-matchall/app/")
 
         if path == "scripts/preview-static.mjs":
             astro.update(("main-site", "status-site"))
@@ -86,11 +88,11 @@ def select_checks(paths, *, full=False):
         )):
             pass
         elif path.startswith("vendor/moddns-matchall/app/"):
-            # The existing workflow has no vendor React frontend check.
             pass
         elif path.startswith("vendor/moddns-matchall/"):
             # Shared vendor configuration/fixtures may affect every Go module.
             go.update(VENDOR_GO_MODULES)
+            vendor_frontend = True
         else:
             # Unknown shared config or new directories must not silently skip CI.
             return select_checks((), full=True)
@@ -101,6 +103,7 @@ def select_checks(paths, *, full=False):
         "go_modules": [m for m in GO_MODULES if m in go],
         "fuwari": fuwari,
         "php": php,
+        "vendor_frontend": vendor_frontend,
     }
 
 
