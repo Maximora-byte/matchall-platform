@@ -1,6 +1,13 @@
 import { test, expect } from "@playwright/test";
 import { REQUIRED_SERVICE_KEYS, STATUS_API } from "../../public/status-summary.js";
 
+test.beforeEach(async ({ context, baseURL }) => {
+  // Page-level status fixtures take precedence; never send fallback requests to production.
+  const localOrigin = new URL(baseURL).origin;
+  await context.route("**/*", (route) => new URL(route.request().url()).origin === localOrigin
+    ? route.continue() : route.abort());
+});
+
 const fulfill = (route, response) => route.fulfill({
   ...response, headers: { "access-control-allow-origin": "http://127.0.0.1:4173" },
 });

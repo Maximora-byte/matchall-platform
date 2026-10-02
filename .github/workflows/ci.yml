@@ -68,8 +68,24 @@ jobs:
       - run: npm ci
       - name: Check
         run: npm run check --if-present
+      - name: Unit tests
+        if: matrix.app == 'status-site' || matrix.app == 'main-site'
+        run: npm test
       - name: Build
         run: npm run build
+      - name: Install UI test browser
+        if: matrix.app == 'status-site' || matrix.app == 'main-site'
+        run: npx playwright install --with-deps chromium
+      - name: Public UI regressions
+        if: matrix.app == 'status-site' || matrix.app == 'main-site'
+        run: npm run test:ui
+      - name: Save failed UI evidence
+        if: failure() && (matrix.app == 'status-site' || matrix.app == 'main-site')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.app }}-ui-failures
+          path: apps/${{ matrix.app }}/test-results
+          retention-days: 7
 
   fuwari:
     runs-on: ubuntu-latest

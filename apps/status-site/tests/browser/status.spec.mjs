@@ -1,5 +1,12 @@
 import { test, expect } from "@playwright/test";
 
+test.beforeEach(async ({ context, baseURL }) => {
+  // Page-level status fixtures take precedence; never send fallback requests to production.
+  const localOrigin = new URL(baseURL).origin;
+  await context.route("**/*", (route) => new URL(route.request().url()).origin === localOrigin
+    ? route.continue() : route.abort());
+});
+
 const service = () => ({
   key: "home", name: "MatchAll 主站", name_en: "MatchAll Home", category: "content",
   url: "https://www.maximoraverse.org/", status: "operational", stale: false,
