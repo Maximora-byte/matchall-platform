@@ -12,14 +12,20 @@ hero:
     - text: 查看服务状态
       link: https://status.maximoraverse.org/
       icon: external
+    - text: 进入控制台
+      link: https://console.maximoraverse.org/login
+      icon: external
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 <CardGrid>
-  <Card title="统一账户" icon="seti:lock">登录、恢复、会话与账户安全。</Card>
-  <Card title="Drive" icon="seti:folder">同步、分享和 WebDAV 使用指南。</Card>
-  <Card title="Network" icon="seti:network">客户端、线路与连接排障。</Card>
-  <Card title="DNS" icon="seti:network">[账户入口与设备配置](/docs/dns-guide/)，原服务维护接入参数。</Card>
-  <Card title="Mirrors" icon="seti:package">下载校验、授权与开发者发布。</Card>
+  <LinkCard title="统一账户" href="/docs/account-security/" description="登录、恢复、会话与账户安全。" />
+  <LinkCard title="Drive" href="/docs/drive-guide/" description="网页使用、同步、分享和 DAV 客户端配置。" />
+  <LinkCard title="Network" href="/docs/network-guide/" description="客户端导入、线路选择、设备与连接排查。" />
+  <LinkCard title="DNS" href="/docs/dns-guide/" description="账户入口与设备配置，原服务维护接入参数。" />
+  <LinkCard title="Mirrors 下载" href="/docs/mirrors-user/" description="选择版本、校验 SHA-256 和确认下载授权。" />
+  <LinkCard title="Mirrors 开发者" href="/docs/mirrors-developer/" description="团队权限、草稿审批、灰度发布与 Webhook。" />
 </CardGrid>
+
+遇到问题时先查看 [常见问题排查](/docs/troubleshooting/)，也可前往 [联系支持](https://www.maximoraverse.org/contact/)。
