@@ -1,0 +1,11 @@
+{
+  "timeout_seconds": 5,
+  "checks": {
+    "global_backend": ["/usr/local/libexec/matchall-routing-probe", "global-backend"],
+    "cn_backend": ["/usr/local/libexec/matchall-routing-probe", "cn-backend"],
+    "tunnel_fresh": ["/usr/local/libexec/matchall-routing-probe", "tunnel-fresh"],
+    "dns_global": ["/usr/local/libexec/matchall-routing-probe", "dns-global"],
+    "dns_cn": ["/usr/local/libexec/matchall-routing-probe", "dns-cn"],
+    "dnssec": ["/usr/local/libexec/matchall-routing-probe", "dnssec-global"]
+  }
+}

@@ -11,6 +11,10 @@ Optional external probe schedules, freshness checks, and the operator-owned aler
 adapter contract are documented in [monitoring/README.md](monitoring/README.md).
 These examples require review and separate activation on an independent host.
 
+The [CN routing health publisher](dns-routing/README.md) owns the sanitized
+report/exit-code contract for issue #56. Its operator-owned probes and consumer
+migration require explicit DNS owner review and separate activation.
+
 ## Hub snapshot freshness override
 
 `compose.hub.example.yaml` explicitly pins Hub's display freshness budget to
