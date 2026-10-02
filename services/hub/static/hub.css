@@ -12,3 +12,14 @@
   .dot { box-shadow:0 0 0 4px rgba(98,106,120,.10) } .dot.operational,.dot.up { box-shadow:0 0 0 4px rgba(24,125,70,.11) }
   .btn.primary { background:#171a21;color:#fff }
 }
+
+/* Console snapshot state is independent from public service availability. */
+.state.linked { color:var(--green);border-color:var(--green) }
+.state.error,.state.restricted { color:var(--red);border-color:var(--red) }
+.state.stale { color:var(--yellow);border-color:var(--yellow) }
+.console-note { color:var(--muted);max-width:78ch }
+.snapshot-time { margin-top:16px }
+.card-actions { display:flex;flex-wrap:wrap;gap:12px 24px;margin-top:24px }
+.card-actions a { display:inline-flex;align-items:center;min-height:44px;color:var(--accent);font-weight:750 }
+.card-actions a:hover,.metric a:hover { text-decoration:underline }
+a:focus-visible { outline:3px solid var(--accent);outline-offset:4px }
