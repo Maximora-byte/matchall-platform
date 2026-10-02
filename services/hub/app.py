@@ -898,7 +898,7 @@ async def callback(request: Request, code: str = "", state: str = ""):
     session = {"sub": claims["sub"], "preferred_username": claims.get("preferred_username") or claims.get("nickname", ""),
                "name": claims.get("name", ""), "email": claims.get("email", ""), "groups": claims.get("groups", []),
                "csrf": secrets.token_urlsafe(24)}
-    response = RedirectResponse("/", status_code=303)
+    response = RedirectResponse("/console", status_code=303)
     response.delete_cookie("console_oidc")
     response.set_cookie("console_session", serializer.dumps(session), max_age=86400 * 7, secure=True, httponly=True, samesite="lax")
     return response
