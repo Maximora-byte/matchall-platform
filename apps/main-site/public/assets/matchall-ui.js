@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "20260930astro2";
+  const VERSION = "20261002onboarding1";
   const COOKIE = "matchall_lang";
   const supported = new Set(["zh", "en", "ja"]);
   const hostname = location.hostname;
@@ -12,6 +12,9 @@
 
   const common = {
     en: {
+      "登录控制台": "Sign in", "已有账户，登录控制台": "Have an account? Sign in", "第一次使用，查看指南": "New here? Start with the guide", "没有邀请码？联系支持": "No invite? Contact support", "查看入门指南": "Read the getting started guide",
+      "新用户需有效邀请码注册，可先向邀请方确认；各项服务的权限、套餐与授权需分别确认。": "Registration requires a valid invite; check with the person inviting you first. Check each service's access, plan and permissions separately.",
+      "准备好有效邀请码后，完成注册与邮箱验证，再按指南确认所需服务的权限。": "Use a valid invite to register and verify your email, then follow the guide to check access to the services you need.",
       "总览": "Overview", "账户": "Account", "网盘": "Drive", "网络": "Network", "镜像": "Mirrors", "博客": "Blog", "控制台": "Console", "状态": "Status", "服务状态": "Service status", "用户中心 →": "Console →",
       "全部服务": "All services", "统一账户": "Account", "统一登录": "Sign in", "统一登录 →": "Sign in →", "注册账户": "Register", "使用邀请码注册": "Register with invite", "使用邀请码注册 →": "Register with invite →", "进入服务 →": "Open service →", "浏览项目 →": "Browse projects →",
       "联系方式": "Contact", "联系我们": "Contact", "隐私政策": "Privacy", "服务条款": "Terms", "退款政策": "Refunds", "定价说明": "Pricing", "账户中心": "Account center",
@@ -24,6 +27,9 @@
       "价格": "Pricing", "我的授权": "My access", "收费与发布管理": "Billing & publishing", "退出": "Sign out", "免费": "Free", "付费": "Paid", "已解锁": "Unlocked"
     },
     ja: {
+      "登录控制台": "ログイン", "已有账户，登录控制台": "アカウントをお持ちの方：ログイン", "第一次使用，查看指南": "初めての方：利用ガイド", "没有邀请码？联系支持": "招待コードがない方：お問い合わせ", "查看入门指南": "利用開始ガイドを見る",
+      "新用户需有效邀请码注册，可先向邀请方确认；各项服务的权限、套餐与授权需分别确认。": "新規登録には有効な招待コードが必要です。まず招待者にご確認ください。各サービスの利用権限やプランは個別にご確認ください。",
+      "准备好有效邀请码后，完成注册与邮箱验证，再按指南确认所需服务的权限。": "有効な招待コードで登録し、メール認証を完了したら、ガイドに沿って必要なサービスの利用権限をご確認ください。",
       "总览": "概要", "账户": "アカウント", "网盘": "ドライブ", "网络": "ネットワーク", "镜像": "ミラー", "博客": "ブログ", "控制台": "コンソール", "状态": "稼働状況", "服务状态": "サービス状態", "用户中心 →": "コンソール →",
       "全部服务": "すべてのサービス", "统一账户": "統合アカウント", "统一登录": "ログイン", "统一登录 →": "ログイン →", "注册账户": "登録", "使用邀请码注册": "招待コードで登録", "使用邀请码注册 →": "招待コードで登録 →", "进入服务 →": "サービスを開く →", "浏览项目 →": "プロジェクトを見る →",
       "联系方式": "お問い合わせ", "联系我们": "お問い合わせ", "隐私政策": "プライバシー", "服务条款": "利用規約", "退款政策": "返金ポリシー", "定价说明": "料金", "账户中心": "アカウントセンター",
