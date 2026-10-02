@@ -7,6 +7,7 @@ import secrets
 import socket
 import ipaddress
 import sqlite3
+import tempfile
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -197,6 +198,35 @@ def finalize_hosted_file(target: Path, project_slug: str, version: str, filename
     client.upload_file(str(target), S3_BUCKET, key, ExtraArgs={"ContentType": "application/octet-stream"})
     target.unlink(missing_ok=True)
     return "s3", key, ""
+
+
+async def store_release_upload(upload: UploadFile, project_slug: str, version: str, *, local_only: bool = False):
+    # The display filename/version must never choose a storage path. mkstemp
+    # creates a new, exclusive file (including when a candidate is a symlink).
+    filename = Path(upload.filename or "").name
+    if not filename or filename in {".", ".."}:
+        raise HTTPException(400, "invalid filename")
+    fd, name = tempfile.mkstemp(prefix="artifact-", dir=FILES_DIR)
+    target = Path(name)
+    digest = hashlib.sha256()
+    size = 0
+    try:
+        with os.fdopen(fd, "wb") as out:
+            while chunk := await upload.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_UPLOAD:
+                    raise HTTPException(413, "file too large")
+                digest.update(chunk)
+                out.write(chunk)
+        # Only a completely written file may be referenced by an artifact row.
+        if local_only:
+            provider, key, local_path = "local", "", str(target.relative_to(FILES_DIR))
+        else:
+            provider, key, local_path = finalize_hosted_file(target, project_slug, version, filename)
+        return filename, size, digest.hexdigest(), provider, key, local_path
+    except BaseException:
+        target.unlink(missing_ok=True)
+        raise
 
 
 serializer = URLSafeTimedSerializer(read_secret(SESSION_SECRET_FILE) or secrets.token_urlsafe(48), salt="matchall-mirrors")
@@ -728,16 +758,19 @@ def audit(con, user_sub, action, *, team_id=None, project_id=None, detail=""):
 
 
 async def dispatch_release_event(project, version, channel):
+    # Hub only has broad users/public audiences, not project membership ACLs.
+    is_public = project.get("visibility") == "public"
     event_id = f"release:{project['slug']}:{channel}:{version}"
     event = {"id": event_id, "type": "release.published", "severity": "info",
              "title": f"{project['name']} {version} 已发布",
              "body": f"{channel} 通道已有新版本。", "url": f"{BASE_URL}/project/{project['slug']}",
-             "audience": "users", "project": project["slug"], "version": version, "channel": channel,
+             "audience": "users" if is_public else "private", "visibility": project.get("visibility", "private"),
+             "project": project["slug"], "version": version, "channel": channel,
              "created_at": int(time.time())}
     raw = json.dumps(event, separators=(",", ":"), ensure_ascii=False).encode()
     hub_secret = read_secret(HUB_EVENT_SECRET_FILE)
     async with httpx.AsyncClient(timeout=8.0, follow_redirects=False) as client:
-        if hub_secret:
+        if is_public and hub_secret:
             signature = hmac.new(hub_secret.encode(), raw, hashlib.sha256).hexdigest()
             try:
                 await client.post(HUB_EVENT_URL, content=raw, headers={"content-type": "application/json", "x-matchall-signature": f"sha256={signature}"})
@@ -1310,13 +1343,8 @@ async def developer_release(request: Request, csrf_token: str = Form(...), proje
         project=con.execute("SELECT * FROM projects WHERE slug=?",(valid_slug(project_slug),)).fetchone()
         if not project or team_role(con,project["team_id"],user) not in {"owner","editor"}: raise HTTPException(403,"Editor required")
     if upload and upload.filename:
-        filename=Path(upload.filename).name; target_dir=FILES_DIR/project["slug"]/re.sub(r"[^A-Za-z0-9._-]","_",version); target_dir.mkdir(parents=True,exist_ok=True); target=target_dir/filename; digest=hashlib.sha256()
-        with target.open("wb") as out:
-            while chunk:=await upload.read(1024*1024):
-                size+=len(chunk)
-                if size>MAX_UPLOAD: target.unlink(missing_ok=True); raise HTTPException(413,"file too large")
-                digest.update(chunk); out.write(chunk)
-        sha256=digest.hexdigest(); storage_provider,storage_key,local_path=finalize_hosted_file(target,project["slug"],version,filename); external_url=""
+        filename,size,sha256,storage_provider,storage_key,local_path = await store_release_upload(upload,project["slug"],version)
+        external_url=""
     elif external_url.startswith("https://"):
         if project["visibility"] == "private" or project["access_mode"] == "paid":
             raise HTTPException(400,"私有或付费项目必须上传托管文件，不能使用永久外链")
@@ -1329,7 +1357,7 @@ async def developer_release(request: Request, csrf_token: str = Form(...), proje
             release=con.execute("SELECT id FROM releases WHERE project_id=? AND version=? AND channel=?",(project["id"],version.strip(),channel)).fetchone()
             con.execute("INSERT INTO artifacts(release_id,os,arch,filename,local_path,external_url,size,sha256,created_at,storage_provider,storage_key) VALUES(?,?,?,?,?,?,?,?,?,?,?)",(release["id"],os_name.lower(),arch.lower(),filename,local_path,external_url,size,sha256,now,storage_provider,storage_key))
             con.execute("UPDATE projects SET updated_at=? WHERE id=?",(now,project["id"])); audit(con,user["sub"],"release.drafted",team_id=project["team_id"],project_id=project["id"],detail=f"{version}:{channel}:{rollout_percentage}")
-    except Exception:
+    except BaseException:
         if local_path:(FILES_DIR/local_path).unlink(missing_ok=True)
         raise
     return RedirectResponse("/developer",status_code=303)
@@ -1367,35 +1395,34 @@ async def developer_release_upload(request: Request, project_slug: str = Form(..
         if not token: raise HTTPException(401,"invalid developer token")
         project=con.execute("SELECT * FROM projects WHERE slug=? AND team_id=?",(valid_slug(project_slug),token["team_id"])).fetchone()
         if not project: raise HTTPException(404,"project not found")
-    filename=Path(upload.filename).name; target_dir=FILES_DIR/project["slug"]/re.sub(r"[^A-Za-z0-9._-]","_",version); target_dir.mkdir(parents=True,exist_ok=True)
-    target=target_dir/(secrets.token_hex(6)+"-"+filename); digest=hashlib.sha256(); size=0
-    with target.open("wb") as out:
-        while chunk:=await upload.read(1024*1024):
-            size+=len(chunk)
-            if size>MAX_UPLOAD: target.unlink(missing_ok=True); raise HTTPException(413,"file too large")
-            digest.update(chunk); out.write(chunk)
-    provider,key,local_path=finalize_hosted_file(target,project["slug"],version,filename); now=int(time.time()); rollout=max(1,min(rollout_percentage,100))
-    with db() as con:
-        con.execute("""INSERT INTO releases(project_id,version,channel,notes,published_at,status,rollout_percentage) VALUES(?,?,?,?,?,'draft',?)
-          ON CONFLICT(project_id,version,channel) DO UPDATE SET notes=excluded.notes,published_at=excluded.published_at,status='draft',rollout_percentage=excluded.rollout_percentage""",
-          (project["id"],version.strip(),channel,notes[:10000],now,rollout))
-        release=con.execute("SELECT id FROM releases WHERE project_id=? AND version=? AND channel=?",(project["id"],version.strip(),channel)).fetchone()
-        con.execute("INSERT INTO artifacts(release_id,os,arch,filename,local_path,size,sha256,created_at,storage_provider,storage_key) VALUES(?,?,?,?,?,?,?,?,?,?)",
-          (release["id"],os_name.lower(),arch.lower(),filename,local_path,size,digest.hexdigest(),now,provider,key))
-        audit(con,token["created_by"],"release.upload.drafted",team_id=token["team_id"],project_id=project["id"],detail=f"{version}:{channel}:{rollout}")
-    return {"code":0,"data":{"project":project["slug"],"version":version,"channel":channel,"status":"draft","sha256":digest.hexdigest(),"size":size,"storage":provider}}
+    filename,size,sha256,provider,key,local_path = await store_release_upload(upload,project["slug"],version)
+    now=int(time.time()); rollout=max(1,min(rollout_percentage,100))
+    try:
+        with db() as con:
+            con.execute("""INSERT INTO releases(project_id,version,channel,notes,published_at,status,rollout_percentage) VALUES(?,?,?,?,?,'draft',?)
+              ON CONFLICT(project_id,version,channel) DO UPDATE SET notes=excluded.notes,published_at=excluded.published_at,status='draft',rollout_percentage=excluded.rollout_percentage""",
+              (project["id"],version.strip(),channel,notes[:10000],now,rollout))
+            release=con.execute("SELECT id FROM releases WHERE project_id=? AND version=? AND channel=?",(project["id"],version.strip(),channel)).fetchone()
+            con.execute("INSERT INTO artifacts(release_id,os,arch,filename,local_path,size,sha256,created_at,storage_provider,storage_key) VALUES(?,?,?,?,?,?,?,?,?,?)",
+              (release["id"],os_name.lower(),arch.lower(),filename,local_path,size,sha256,now,provider,key))
+            audit(con,token["created_by"],"release.upload.drafted",team_id=token["team_id"],project_id=project["id"],detail=f"{version}:{channel}:{rollout}")
+    except BaseException:
+        if local_path:
+            (FILES_DIR/local_path).unlink(missing_ok=True)
+        raise
+    return {"code":0,"data":{"project":project["slug"],"version":version,"channel":channel,"status":"draft","sha256":sha256,"size":size,"storage":provider}}
 
 
 @app.post("/developer/releases/{release_id}/approve")
 async def developer_approve_release(release_id: int, request: Request, csrf_token: str = Form(...)):
     user=require_user(request); csrf(request,csrf_token); now=int(time.time())
     with db() as con:
-        row=con.execute("SELECT r.*,p.slug,p.name,p.team_id FROM releases r JOIN projects p ON p.id=r.project_id WHERE r.id=?",(release_id,)).fetchone()
+        row=con.execute("SELECT r.*,p.slug,p.name,p.team_id,p.visibility FROM releases r JOIN projects p ON p.id=r.project_id WHERE r.id=?",(release_id,)).fetchone()
         if not row or team_role(con,row["team_id"],user)!="owner": raise HTTPException(403,"Owner required")
         if row["status"]!="draft": raise HTTPException(409,"release is not a draft")
         con.execute("UPDATE releases SET status='published',approved_by=?,approved_at=?,published_at=? WHERE id=?",(user["sub"],now,now,release_id))
         audit(con,user["sub"],"release.approved",team_id=row["team_id"],project_id=row["project_id"],detail=f"{row['version']}:{row['channel']}")
-        project={"id":row["project_id"],"slug":row["slug"],"name":row["name"]}
+        project={"id":row["project_id"],"slug":row["slug"],"name":row["name"],"visibility":row["visibility"]}
     await dispatch_release_event(project,row["version"],row["channel"])
     return RedirectResponse("/developer",status_code=303)
 
@@ -1514,18 +1541,9 @@ async def create_release(request: Request, csrf_token: str = Form(...), project_
     now = int(time.time())
     local_path = ""; filename = ""; size = 0; sha256 = expected_sha256.strip().lower()
     if upload and upload.filename:
-        filename = Path(upload.filename).name
-        safe_dir = FILES_DIR / valid_slug(project_slug) / re.sub(r"[^A-Za-z0-9._-]", "_", version)
-        safe_dir.mkdir(parents=True, exist_ok=True)
-        target = safe_dir / filename
-        digest = hashlib.sha256()
-        with target.open("wb") as out:
-            while chunk := await upload.read(1024 * 1024):
-                size += len(chunk)
-                if size > MAX_UPLOAD:
-                    target.unlink(missing_ok=True); raise HTTPException(413, "file too large")
-                digest.update(chunk); out.write(chunk)
-        sha256 = digest.hexdigest(); local_path = str(target.relative_to(FILES_DIR)); external_url = ""
+        filename, size, sha256, _, _, local_path = await store_release_upload(
+            upload, valid_slug(project_slug), version, local_only=True)
+        external_url = ""
     elif external_url:
         if not external_url.startswith("https://"): raise HTTPException(400, "external URL must use https")
         filename = Path(external_url.split("?", 1)[0]).name or f"{project_slug}-{version}"
@@ -1542,7 +1560,7 @@ async def create_release(request: Request, csrf_token: str = Form(...), project_
             release = con.execute("SELECT id FROM releases WHERE project_id=? AND version=? AND channel=?", (project["id"], version.strip(), channel)).fetchone()
             con.execute("INSERT INTO artifacts(release_id,os,arch,filename,local_path,external_url,size,sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?)", (release["id"], os_name.strip().lower(), arch.strip().lower(), filename, local_path, external_url.strip(), size, sha256, now))
             con.execute("UPDATE projects SET updated_at=? WHERE id=?", (now, project["id"]))
-    except Exception:
+    except BaseException:
         if local_path: (FILES_DIR / local_path).unlink(missing_ok=True)
         raise
     return RedirectResponse(f"/project/{project_slug}", status_code=303)
