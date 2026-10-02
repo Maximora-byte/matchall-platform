@@ -875,6 +875,8 @@ def status_history(days: int = 30):
             AND m.starts_at<=c.checked_at AND (m.ends_at IS NULL OR m.ends_at>c.checked_at))
           GROUP BY service_key, day ORDER BY day ASC
         """, (cutoff,)).fetchall()
+        maintenance_rows = con.execute("""SELECT service_key,starts_at,ends_at FROM maintenance
+          WHERE starts_at<? AND COALESCE(ends_at,?)>?""", (now, now, cutoff)).fetchall()
     for row in rows:
         target = by_service.get(row["service_key"])
         if target is None:
@@ -886,8 +888,6 @@ def status_history(days: int = 30):
             "avg_latency": int(row["avg_latency"] or 0),
             "checks": total,
         })
-        maintenance_rows = con.execute("""SELECT service_key,starts_at,ends_at FROM maintenance
-          WHERE starts_at<? AND COALESCE(ends_at,?)>?""", (now, now, cutoff)).fetchall()
     expected_dates = [(first_day + timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(days)]
     for target in by_service.values():
         indexed = {row["date"]: row for row in target["days"]}
