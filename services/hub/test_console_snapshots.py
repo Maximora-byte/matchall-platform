@@ -99,6 +99,28 @@ class ConsoleSnapshotTests(unittest.TestCase):
             self.write(key)
             self.assertEqual(self.summary(key)["state"], "restricted")
 
+    def test_legacy_network_null_online_count_is_zero_not_source_error(self):
+        self.records["network"]["online_count"] = None
+        self.records["network"]["expired_at"] = None
+        self.write("network")
+        summary = self.summary("network")
+        self.assertEqual(summary["state"], "linked")
+        self.assertEqual(summary["record"]["online_count"], 0)
+        self.assertEqual(summary["record"]["expired_at"], 0)
+        with patch.object(app.time, "time", return_value=self.now):
+            response = self.client(self.user).get("/console")
+        self.assertIn("0/2 设备在线", response.text)
+        self.assertNotIn('data-service="network" data-sync-state="error"', response.text)
+        # Only the legacy explicit null is compatible; missing/malformed fields
+        # must still fail closed rather than fabricate a current zero count.
+        for value in ("0", False, -1):
+            self.records["network"]["online_count"] = value
+            self.write("network")
+            self.assertEqual(self.summary("network")["state"], "error")
+        del self.records["network"]["online_count"]
+        self.write("network")
+        self.assertEqual(self.summary("network")["state"], "error")
+
     def test_one_fresh_source_does_not_mask_missing_or_error_sources(self):
         self.write("drive")
         (self.root / "mirrors.json").write_text('broken')
