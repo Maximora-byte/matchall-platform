@@ -83,9 +83,37 @@ Real-data access, transfer, and restoration need separate authorization.
    data-handling policy. A synthetic CI result must never be recorded as a production
    restore or an off-host disaster-recovery rehearsal
 
-Do not use the existing `backup.py` as a test command: it contains host-specific
-production paths and executes on import. The new verifier neither imports nor
-modifies it. Existing backup scheduling/retention is not established by this PR.
+## Explicit backup generation
+
+`services/dns/backup.py` is an explicit CLI: importing it performs no backup,
+database access, directory creation, or umask change. All source/destination
+arguments are required; running it without arguments fails before touching files.
+An operator-reviewed invocation uses existing, approved inputs, for example:
+
+```sh
+python services/dns/backup.py \
+  --database /approved/runtime/dns.sqlite3 \
+  --config /approved/config/dns \
+  --config /approved/config/Caddyfile \
+  --output /approved/private/backup-directory
+```
+
+These are placeholders, not a deployment or test command. Existing scheduled
+jobs that invoked the old no-argument script must be reviewed and updated before
+adopting this version. This repository does not install or change those jobs.
+
+The producer opens the existing source read-only and uses SQLite online backup
+(including committed WAL data). It creates a private `.pending-*` staging directory,
+archives only regular files/directories, writes the two-file SHA256SUMS contract,
+then runs the existing offline verifier. Only a complete, verified bundle is renamed
+to its final sibling directory. Ordinary failures clean staging; process termination
+may leave an orphan `.pending-*`, which consumers must ignore. Do not select backups
+solely by directory modification time: require the exact manifest and verify it.
+Explicit bundle names never overwrite an existing destination.
+
+Bundles are mode 0700 and files 0600. The offline verifier's size/schema limits
+apply to generation too. No encryption, off-host transfer, scheduler, key-pairing
+proof, or retention/deletion policy is introduced. These remain operator gates.
 
 ## Current sensitive data, not historical assumptions
 
