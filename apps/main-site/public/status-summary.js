@@ -1,7 +1,7 @@
 export const STATUS_API = "https://status.maximoraverse.org/api/status";
 export const STALE_AFTER_SECONDS = 180;
 // Match the Hub's monitored registry, not the landing page's marketing cards.
-export const REQUIRED_SERVICE_KEYS = ["home", "blog", "account", "drive", "mirrors", "network"];
+export const REQUIRED_SERVICE_KEYS = ["home", "blog", "account", "drive", "mirrors", "network", "dns"];
 const PRIORITY = ["outage", "partial_outage", "degraded", "maintenance", "unknown", "operational"];
 const LABELS = {
   operational: "所有受监测服务运行正常",

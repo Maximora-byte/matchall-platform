@@ -9,6 +9,19 @@ const payload = () => ({
   services: REQUIRED_SERVICE_KEYS.map((key) => ({ key, status: "operational", last_checked_at: now - 10, stale: false })),
 });
 
+test("DNS coverage is required and its incidents and stale data affect the headline", () => {
+  const data = payload();
+  assert.ok(REQUIRED_SERVICE_KEYS.includes("dns"));
+  data.services = data.services.filter((service) => service.key !== "dns");
+  assert.equal(deriveStatusSummary(data, now).status, "unknown");
+  data.services.push({ key: "dns", status: "outage", last_checked_at: now - 10, stale: false });
+  assert.equal(deriveStatusSummary(data, now).status, "outage");
+  data.services.at(-1).status = "operational";
+  assert.equal(deriveStatusSummary(data, now).status, "operational");
+  data.services.at(-1).stale = true;
+  assert.equal(deriveStatusSummary(data, now).status, "unknown");
+});
+
 test("green requires fresh probes for the complete monitored registry", () => {
   assert.equal(deriveStatusSummary(payload(), now).status, "operational");
   for (const mutate of [
@@ -142,7 +155,7 @@ test("all six states retain status-page priority and known incidents remain visi
 
 test("additional unconfigured services prevent green without hiding known incidents", () => {
   const data = payload();
-  data.services.push({ key: "dns", status: "unknown", last_checked_at: null, stale: true });
+  data.services.push({ key: "additional-service", status: "unknown", last_checked_at: null, stale: true });
   assert.equal(deriveStatusSummary(data, now).status, "unknown");
   data.services[0].status = "degraded";
   assert.equal(deriveStatusSummary(data, now).status, "degraded");
@@ -184,6 +197,7 @@ test("badge expectations track the actual Hub registry", async () => {
   const source = await readFile(new URL("../../../services/hub/app.py", import.meta.url), "utf8");
   const registry = source.match(/SERVICES = \[([\s\S]*?)\n\]/)[1];
   const keys = [...registry.matchAll(/"key": "([^"]+)"/g)].map((match) => match[1]);
+  keys.push(...[...source.matchAll(/SERVICES\.append\(\{"key": "([^"]+)"/g)].map((match) => match[1]));
   assert.deepEqual([...REQUIRED_SERVICE_KEYS].sort(), keys.sort());
 });
 

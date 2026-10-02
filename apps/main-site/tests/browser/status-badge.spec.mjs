@@ -41,6 +41,7 @@ test("missing, stale, malformed and failed responses never show green", async ({
     const data = payload();
     if (mode === "empty") data.services = [];
     if (mode === "incomplete") data.services.pop();
+    if (mode === "missing-dns") data.services = data.services.filter((service) => service.key !== "dns");
     if (mode === "stale") data.services[0].last_checked_at -= 200;
     if (mode === "stale-string") data.services[0].stale = "false";
     if (mode === "stale-number") data.services[0].stale = 0;
@@ -59,7 +60,7 @@ test("missing, stale, malformed and failed responses never show green", async ({
   });
   await page.goto("/");
   const badge = page.locator(".status-pill");
-  for (const failure of ["empty", "incomplete", "stale", "stale-string", "stale-number", "missing-stale",
+  for (const failure of ["empty", "incomplete", "missing-dns", "stale", "stale-string", "stale-number", "missing-stale",
     "missing-window", "invalid-window", "future-probe", "malformed-incident", "http", "malformed", "network"]) {
     mode = "healthy";
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
