@@ -1235,7 +1235,7 @@ def notification_center(request: Request):
 
 
 @app.post("/notifications/preferences")
-def notification_preferences(request: Request, csrf_token: str = Form(...), email_enabled: bool = Form(False),
+def notification_preferences(request: Request, csrf_token: str = Form(""), email_enabled: bool = Form(False),
                              webpush_enabled: bool = Form(False)):
     user = require_user(request); check_csrf(user, csrf_token)
     email = (user.get("email") or "").strip()
