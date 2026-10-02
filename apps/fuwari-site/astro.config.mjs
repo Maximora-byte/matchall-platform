@@ -28,8 +28,6 @@ export default defineConfig({
 	site: "https://blog.maximoraverse.org/",
 	base: "/",
 	trailingSlash: "always",
-	// Preserve existing entry slugs/render() and routes during the Astro upgrade.
-	legacy: { collectionsBackwardsCompat: true },
 	integrations: [
 		swup({
 			theme: false,
