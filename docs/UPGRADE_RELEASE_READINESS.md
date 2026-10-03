@@ -19,7 +19,7 @@ after any revision or base change.
 | 3 | [#60: Mirrors event outbox](https://github.com/Maximora-byte/matchall-platform/pull/60) | `dcb83b0a980289c6ca1bfc6563beb73bda83f012` | [run 37025574252](https://github.com/Maximora-byte/matchall-platform/actions/runs/37025574252) |
 | 4 | [#61: shared service guides](https://github.com/Maximora-byte/matchall-platform/pull/61) | `2b5e298b006d71316750da72c68b6974bdcbc736` | [run 37027777834](https://github.com/Maximora-byte/matchall-platform/actions/runs/37027777834) |
 
-All four PRs were open and unmerged when reviewed. This order groups the user
+All four PRs were open and unmerged at the original review. This order groups the user
 journey before the supporting reliability and documentation work; it is not a
 hard dependency chain. The guides describe version-dependent delivery, so #61
 can merge before #60 without claiming that retries are already deployed.
@@ -43,6 +43,47 @@ each Hub and Mirrors `test_*.py` in a separate Python process after installing
 their requirements. Run `python scripts/sync_guides.py` once #61 is present.
 Record that combined revision and results; individual PR checks do not replace
 this gate.
+
+## Repository-wide integration review — 2026-10-03
+
+PRs #58, #59 and #61 have now been reviewed and squash-merged. PR #60 remains
+open for the explicit owner privacy/data-retention decision; its successful tests
+do not substitute for that decision. This checklist is updated through PR #62.
+
+The exact five original heads, including #62's original documentation head
+`a5f3db0e3b368fd27a2f74042da96839c66fa4d4`, were composed in an isolated local test
+branch at `253aee00d25d07dd644e19d0cb7535ad85a1f14c` without conflicts. That branch
+is not a release or production deployment. On the combined source:
+
+- Hub: all 160 tests across 14 files passed, each in its own Linux Python 3.12
+  process. Mirrors: all 104 tests across 7 files passed the same way. Existing
+  isolated environments passed dependency checks.
+- Main-site: clean install, check, build, 18 unit tests and 50 browser tests passed
+  on Node 24.20.0 with installed Chrome; nonlocal browser requests were mocked
+  or blocked.
+- Fuwari: native frozen pnpm install, check and build/Pagefind passed. The existing
+  Markdown-config, optional icon-directory and Chinese-stemming notices remain.
+- Shared-guide read-only synchronization and 20 CI-selection tests passed.
+  Starlight's exact reviewed-head CI passed install/check/build; local native
+  dependency installation did not finish, so it does not provide new local
+  Starlight build evidence.
+
+The subsequent #62 edits reconcile these records and the owner updates linked
+below; they change Markdown only and receive content/link review. Deployment,
+live account flows, actual notification receipt and image runtime acceptance
+remain outside this repository task.
+
+### Dependency advisory recorded during review
+
+The fresh main-site audit reports two high entries for one inherited transitive
+[`http-cache-semantics` advisory](https://github.com/advisories/GHSA-ch52-4w7c-c8xp).
+Upstream lists no patched version. Dependency files are unchanged in this batch.
+Main-site produces static files, and the installed Astro usage is remote-image
+build caching. The advisory's authenticated shared-response-cache scenario has
+not been demonstrated in this repository configuration; this is not a deployed
+exposure audit. Track an upstream patch and reassess before using affected code
+in a dynamic authenticated cache. Do not apply npm's suggested incompatible
+Astro 2 downgrade merely to silence the audit.
 
 ## Acceptance in a separately approved environment
 
@@ -121,17 +162,21 @@ replace those protections.
 
 - [DNS publisher #57](https://github.com/Maximora-byte/matchall-platform/pull/57)
   is merged and [issue #56](https://github.com/Maximora-byte/matchall-platform/issues/56)
-  is closed for the code fix. Deployment acceptance remains unverified: adapt
-  all six probes, validate the versioned report/freshness contract and global
-  fallback, and rehearse missing, malformed,
-  overdue, and all-unhealthy reports in an owner-approved environment. Use the
+  is closed after the [owner's activation and acceptance record](https://github.com/Maximora-byte/matchall-platform/issues/56#issuecomment-5954525057).
+  That record confirms six adapted probes, the schema-1 freshness consumer,
+  scheduled execution, CN-failure/Global-fallback separation and stale-report
+  rejection. This review reads the recorded evidence; it does not repeat
+  production acceptance or claim that the underlying intermittent CN network
+  fault is resolved. Further DNS recovery exercises need separate approval. Use the
   [DNS examples](../infrastructure/dns-routing/README.md) and
   [recovery rehearsal](dns-recovery-rehearsal.md). Merge does not install a
   publisher, timer, or router configuration.
 - [Monitoring issue #49](https://github.com/Maximora-byte/matchall-platform/issues/49)
-  stays open until a separately located probe, scheduling, missed-run detection,
-  actual notification delivery, and whole-monitor-host deadman detection are
-  accepted. A same-host probe is not an independent fault domain. An adapter's
+  stays open. The [latest owner update](https://github.com/Maximora-byte/matchall-platform/issues/49#issuecomment-5953726395)
+  reports independent-monitor deployment and successful missed-run/recovery
+  checks. Actual notification receipt and whole-monitor-host deadman detection
+  still require acceptance; the short update does not establish host/network
+  evidence or resource ownership. A same-host probe is not an independent fault domain. An adapter's
   exit code proves acceptance by that adapter, not receipt by an external person.
   See [monitoring readiness](monitoring-readiness.md) and
   [scheduler examples](../infrastructure/monitoring/README.md).
@@ -156,5 +201,6 @@ For each gate, record: reviewed and deployed revision, service, approving owner,
 authorized environment, time/timezone, synthetic scenario, expected/actual
 outcome, sanitized evidence reference, rollback result, and unresolved items.
 Mark pending items explicitly. Close #49 only after its operational gates are
-satisfied. The closed code issue #56 is not deployment evidence; record the DNS
-rehearsal separately. Repository CI and merge simulations prove neither gate.
+satisfied. For #56, use the linked owner acceptance record rather than its closed
+state as evidence; additional DNS rehearsals need their own record. Repository
+CI and merge simulations do not establish operational acceptance.

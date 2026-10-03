@@ -20,29 +20,31 @@ review order, evidence, acceptance criteria, and rollback.
 The [2026-09-30 expansion report](ASTRO_EXPANSION_REPORT.md) records historical
 work; it is not current deployment evidence.
 
-## Current upgrade batch: implemented, awaiting merge and acceptance
+## Current upgrade batch: integration and remaining acceptance
 
 | Work | Review | Remaining acceptance |
 | --- | --- | --- |
-| Clear login/invitation guidance and visible mobile sign-in | [PR #58](https://github.com/Maximora-byte/matchall-platform/pull/58) | Desktop/mobile navigation and existing login flow |
-| Independent, bounded Console snapshot collection | [PR #59](https://github.com/Maximora-byte/matchall-platform/pull/59) | Collector permissions, scheduling, failure/recovery behavior |
+| Clear login/invitation guidance and visible mobile sign-in | [PR #58](https://github.com/Maximora-byte/matchall-platform/pull/58), merged | Deployed navigation and existing login flow |
+| Independent, bounded Console snapshot collection | [PR #59](https://github.com/Maximora-byte/matchall-platform/pull/59), merged | Collector permissions, scheduling, deployed failure/recovery behavior |
 | Durable Mirrors release-event retries | [PR #60](https://github.com/Maximora-byte/matchall-platform/pull/60) | Owner privacy/retention review, receiver deduplication, queue recovery |
-| Six shared guides and clearer documentation entry | [PR #61](https://github.com/Maximora-byte/matchall-platform/pull/61) | Guide parity, existing URLs, feedback and service navigation |
+| Six shared guides and clearer documentation entry | [PR #61](https://github.com/Maximora-byte/matchall-platform/pull/61), merged | Deployed URLs, feedback and service navigation |
 
-Individual CI passed for the reviewed revisions. Local merge simulation found
-no conflicts in this order; combined application tests and operational
-acceptance are still required. These PRs have not been deployed by this task.
+Individual CI passed for the reviewed revisions. Combined local Hub/Mirrors,
+main-site and blog checks now pass; Starlight's reviewed-head CI passed. The
+release checklist records the exact source and local verification limit.
+Operational acceptance remains separate. These PRs have not been deployed by this task.
 
 ## Next priorities
 
-1. Review and integrate this batch, then run checks on the combined revision.
+1. Complete #60's owner review and verify final-main CI after integration.
    Use the release checklist before any separately authorized rollout.
 2. Complete independent probe, missed-run, notification-delivery, and whole-host
    deadman acceptance in [issue #49](https://github.com/Maximora-byte/matchall-platform/issues/49).
    A successful synthetic run is not proof of external notification delivery.
 3. Validate DNS recovery using the new publisher contract and an owner-approved
    rehearsal. [Issue #56](https://github.com/Maximora-byte/matchall-platform/issues/56)
-   is closed for the repository fix; deployment acceptance still needs evidence.
+   is closed with an owner-recorded activation/acceptance result; further recovery
+   rehearsals and the intermittent underlying CN network fault remain separate.
 4. Scope one remaining authenticated view at a time after release acceptance.
    Verify authorization, caching, responsive behavior, and rollback per view;
    retain the old backend view until that view passes. Larger Drive directories
