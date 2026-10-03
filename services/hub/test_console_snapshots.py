@@ -128,6 +128,45 @@ class ConsoleSnapshotTests(unittest.TestCase):
         self.assertEqual(sum(item["fresh"] for item in summaries), 1)
         self.assertEqual([s["state"] for s in summaries], ["linked", "missing", "error"])
 
+    def test_collector_failure_and_unknown_markers_hide_even_fresh_rows(self):
+        for marker in ("error", "unknown", "ok", None, False, {}):
+            with self.subTest(marker=marker):
+                (self.root / "nextcloud.json").write_text(json.dumps({
+                    "generated_at": self.now, "users": [self.records["drive"]],
+                    "collection_state": marker, "attempted_at": self.now,
+                    "error_code": "synthetic-private-exception-detail",
+                }), encoding="utf-8")
+                summary = self.summary("drive")
+                self.assertEqual(summary["state"], "error")
+                self.assertIsNone(summary["generated_at"])
+                self.assertIsNone(summary["record"])
+                self.assertFalse(summary["fresh"])
+                self.assertNotIn("synthetic-private", str(summary))
+
+    def test_collector_failure_is_not_unlinked_and_success_recovers(self):
+        from snapshot import error_snapshot
+
+        for key in self.records:
+            self.write(key)
+        (self.root / "xboard.json").write_text(
+            json.dumps(error_snapshot("collection_timeout")), encoding="utf-8")
+        summaries = app.console_service_summaries(self.user, self.now)
+        self.assertEqual([s["state"] for s in summaries], ["linked", "error", "linked"])
+        with patch.object(app.time, "time", return_value=self.now):
+            response = self.client(self.user).get("/console")
+        self.assertIn('data-service="network" data-sync-state="error"', response.text)
+        self.assertNotIn("Synthetic plan", response.text)
+        self.assertNotIn("collection_timeout", response.text)
+        self.write("network")
+        self.assertEqual(self.summary("network")["state"], "linked")
+
+    def test_utf8_snapshot_preserves_non_ascii_account_data(self):
+        self.records["network"]["plan_name"] = "合成套餐・テスト"
+        (self.root / "xboard.json").write_text(json.dumps({
+            "generated_at": self.now, "users": [self.records["network"]],
+        }, ensure_ascii=False), encoding="utf-8")
+        self.assertEqual(self.summary("network")["record"]["plan_name"], "合成套餐・テスト")
+
     def client(self, user):
         # TestClient without a context does not run lifespan/probes/delivery tasks.
         self.user_patch = patch.object(app, "get_user", return_value=user)

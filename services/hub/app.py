@@ -662,12 +662,16 @@ def load_docs():
 def load_snapshot(name: str):
     """Read existing local snapshots without confusing missing/error with no account."""
     try:
-        payload = json.loads((SNAPSHOT_DIR / f"{name}.json").read_text())
+        payload = json.loads((SNAPSHOT_DIR / f"{name}.json").read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {"generated_at": None, "users": [], "read_state": "missing"}
     except (OSError, UnicodeError, json.JSONDecodeError):
         return {"generated_at": None, "users": [], "read_state": "error"}
     if not isinstance(payload, dict):
+        return {"generated_at": None, "users": [], "read_state": "error"}
+    # Only legacy success payloads have no marker. Error/unknown collection states
+    # must not expose rows, even if an inconsistent file contains fresh data.
+    if "collection_state" in payload:
         return {"generated_at": None, "users": [], "read_state": "error"}
     generated_at, rows = payload.get("generated_at"), payload.get("users")
     valid_time = type(generated_at) is int and 0 < generated_at <= 253402300799
