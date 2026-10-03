@@ -1,6 +1,8 @@
 """Read-only route/content contracts; no service lifespan or external OIDC calls."""
 import re
+import sys
 import unittest
+from html.parser import HTMLParser
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -9,25 +11,69 @@ import app
 
 ROOT = Path(__file__).resolve().parents[2]
 DOC_DIRS = [ROOT / 'services/hub/docs', ROOT / 'apps/docs-site/src/content/docs/docs', ROOT / 'apps/fuwari-site/src/content/docs']
+sys.path.insert(0, str(ROOT / 'scripts'))
+from sync_guides import GUIDE_SLUGS, parse_document, plan_sync
 
 
 def body(path):
-    text = path.read_text().split('\n---\n', 1)[1]
-    return text.split('\n---\n')[0].strip()
+    return parse_document(path.read_text(encoding='utf-8'), slug=path.stem,
+                          feedback_required=path.parent != DOC_DIRS[0]).body
+
+
+class GuidePage(HTMLParser):
+    def __init__(self, text):
+        super().__init__()
+        self.titles = 0
+        self.forms = []
+        self.links = []
+        self.feed(text)
+
+    def handle_starttag(self, tag, attributes):
+        attributes = dict(attributes)
+        if tag == 'h1':
+            self.titles += 1
+        elif tag == 'form':
+            self.forms.append(attributes)
+        elif tag == 'a':
+            self.links.append(attributes.get('href', ''))
 
 
 class OnboardingGuideTests(unittest.TestCase):
     def test_changed_guides_have_identical_body_across_renderers(self):
-        for slug in ('getting-started', 'dns-guide'):
+        for slug in GUIDE_SLUGS:
             copies = [body(directory / f'{slug}.md') for directory in DOC_DIRS]
             self.assertEqual(copies[0], copies[1])
             self.assertEqual(copies[1], copies[2])
 
     def test_local_guide_links_exist_in_every_renderer(self):
         for directory in DOC_DIRS:
-            for slug in ('getting-started', 'dns-guide'):
+            for slug in GUIDE_SLUGS:
                 for target in re.findall(r'\]\(/docs/([a-z-]+)/\)', body(directory / f'{slug}.md')):
                     self.assertTrue((directory / f'{target}.md').is_file(), target)
+
+    def test_shared_guide_bodies_and_metadata_have_no_sync_drift(self):
+        self.assertEqual(plan_sync(ROOT), {})
+
+    def test_hub_renders_full_guides_with_one_title_and_native_feedback(self):
+        with patch.object(app, 'DOCS_DIR', DOC_DIRS[0]):
+            client = TestClient(app.app)
+            self.addCleanup(client.close)
+            for slug in GUIDE_SLUGS:
+                with self.subTest(slug=slug):
+                    response = client.get(f'/docs/{slug}')
+                    self.assertEqual(response.status_code, 200)
+                    page = GuidePage(response.text)
+                    self.assertEqual(page.titles, 1)
+                    self.assertEqual(page.forms, [{'method': 'post', 'action': f'/docs/{slug}/feedback'}])
+                    self.assertIn('https://www.maximoraverse.org/contact/', page.links)
+
+    def test_docs_home_cards_link_to_existing_guides(self):
+        home = (ROOT / 'apps/docs-site/src/content/docs/index.mdx').read_text(encoding='utf-8')
+        targets = re.findall(r'<LinkCard\b[^>]*href="(/docs/[a-z-]+/)"', home)
+        self.assertEqual(set(targets), {f'/docs/{slug}/' for slug in (
+            'account-security', 'drive-guide', 'network-guide', 'dns-guide', 'mirrors-user', 'mirrors-developer')})
+        for target in targets:
+            self.assertTrue((DOC_DIRS[1] / f'{target.split("/")[2]}.md').is_file(), target)
 
     def test_getting_started_explains_invites_permissions_and_partial_setup(self):
         content = body(DOC_DIRS[0] / 'getting-started.md')
