@@ -15,6 +15,7 @@ os.environ["DATA_DIR"] = _import_data.name
 os.environ["SESSION_SECRET_FILE"] = str(Path(_import_data.name) / "missing-session-secret")
 
 import app
+import release_events
 from fastapi import UploadFile
 from fastapi.testclient import TestClient
 
@@ -257,10 +258,14 @@ class ReleaseSecurityTests(unittest.TestCase):
         client = AsyncMock()
         client.post.return_value = Mock(status_code=200)
         client.__aenter__.return_value = client
-        with patch.object(app.httpx, "AsyncClient", return_value=client), patch.object(app, "read_secret", return_value="hub-test-secret"):
+        with patch.object(app.httpx, "AsyncClient", return_value=client) as client_factory:
             response = self.client.post(f"/developer/releases/{release}/approve", data={"csrf_token": "test-csrf"}, follow_redirects=False)
+        client_factory.assert_not_called()
         self.assertEqual(response.status_code, 303)
         self.assertEqual(self.artifacts()[0]["status"], "published")
+        client.post.assert_not_awaited()
+        asyncio.run(release_events.deliver_pending_events(app.db, client=client, hub_url=app.HUB_EVENT_URL,
+            hub_secret=lambda: "hub-test-secret", validate_url=Mock(side_effect=lambda value: value)))
         return client
 
     def test_private_release_is_published_without_hub_broadcast(self):
@@ -291,9 +296,14 @@ class ReleaseSecurityTests(unittest.TestCase):
 
     def test_missing_visibility_fails_closed_for_hub_broadcast(self):
         client = AsyncMock()
-        client.__aenter__.return_value = client
-        with patch.object(app.httpx, "AsyncClient", return_value=client), patch.object(app, "read_secret", return_value="hub-test-secret"):
-            asyncio.run(app.dispatch_release_event({"id": self.project, "slug": "test-project", "name": "Test"}, "1.0", "stable"))
+        self.assertEqual(self.upload().status_code, 303)
+        release = self.artifacts()[0]["release_id"]
+        with app.db() as con:
+            con.execute("UPDATE releases SET status='published' WHERE id=?", (release,))
+            release_events.enqueue_release_event(con, {"id": self.project, "slug": "test-project", "name": "Test"},
+                release, "1.0", "stable", app.BASE_URL, 100)
+        asyncio.run(release_events.deliver_pending_events(app.db, client=client, hub_url=app.HUB_EVENT_URL,
+            hub_secret=lambda: "hub-test-secret", validate_url=Mock(side_effect=lambda value: value)))
         client.post.assert_not_awaited()
 
 

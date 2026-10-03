@@ -1,6 +1,8 @@
+import asyncio
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
@@ -9,7 +11,7 @@ import ipaddress
 import sqlite3
 import tempfile
 import time
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager, suppress
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 
@@ -23,6 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup
+from release_events import deliver_pending_events, enqueue_release_event, ensure_schema as ensure_release_event_schema
 
 os.umask(0o077)
 
@@ -64,7 +67,30 @@ SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
 CHANNELS = {"stable", "beta", "alpha"}
 CURRENCIES = {"HKD", "JPY", "USD"}
 
-app = FastAPI(title="MatchAll Mirrors", docs_url=None, redoc_url=None)
+async def release_event_loop():
+    async with httpx.AsyncClient(timeout=8.0, follow_redirects=False) as client:
+        while True:
+            try:
+                await deliver_pending_events(db, client=client, hub_url=HUB_EVENT_URL,
+                    hub_secret=lambda: read_secret(HUB_EVENT_SECRET_FILE), validate_url=validate_webhook_url)
+            except Exception:
+                # Never log stored payloads, destination URLs, secrets or exceptions.
+                logging.getLogger(__name__).error("Release event worker iteration failed")
+            await asyncio.sleep(5)
+
+
+@asynccontextmanager
+async def release_event_lifespan(application):
+    worker = asyncio.create_task(release_event_loop())
+    try:
+        yield
+    finally:
+        worker.cancel()
+        with suppress(asyncio.CancelledError):
+            await worker
+
+
+app = FastAPI(title="MatchAll Mirrors", docs_url=None, redoc_url=None, lifespan=release_event_lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Environment(loader=FileSystemLoader("templates"), autoescape=select_autoescape(["html", "xml"]))
 
@@ -436,6 +462,7 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_download_grants_expiry ON download_grants(expires_at);
         """)
+        ensure_release_event_schema(con)
         columns = {row[1] for row in con.execute("PRAGMA table_info(projects)")}
         if "access_mode" not in columns:
             con.execute("ALTER TABLE projects ADD COLUMN access_mode TEXT NOT NULL DEFAULT 'free'")
@@ -755,44 +782,6 @@ def validate_webhook_url(value: str) -> str:
 def audit(con, user_sub, action, *, team_id=None, project_id=None, detail=""):
     con.execute("INSERT INTO audit_log(actor_sub,team_id,project_id,action,detail,created_at) VALUES(?,?,?,?,?,?)",
                 (user_sub, team_id, project_id, action, detail[:500], int(time.time())))
-
-
-async def dispatch_release_event(project, version, channel):
-    # Hub only has broad users/public audiences, not project membership ACLs.
-    is_public = project.get("visibility") == "public"
-    event_id = f"release:{project['slug']}:{channel}:{version}"
-    event = {"id": event_id, "type": "release.published", "severity": "info",
-             "title": f"{project['name']} {version} 已发布",
-             "body": f"{channel} 通道已有新版本。", "url": f"{BASE_URL}/project/{project['slug']}",
-             "audience": "users" if is_public else "private", "visibility": project.get("visibility", "private"),
-             "project": project["slug"], "version": version, "channel": channel,
-             "created_at": int(time.time())}
-    raw = json.dumps(event, separators=(",", ":"), ensure_ascii=False).encode()
-    hub_secret = read_secret(HUB_EVENT_SECRET_FILE)
-    async with httpx.AsyncClient(timeout=8.0, follow_redirects=False) as client:
-        if is_public and hub_secret:
-            signature = hmac.new(hub_secret.encode(), raw, hashlib.sha256).hexdigest()
-            try:
-                await client.post(HUB_EVENT_URL, content=raw, headers={"content-type": "application/json", "x-matchall-signature": f"sha256={signature}"})
-            except httpx.HTTPError:
-                pass
-        with db() as con:
-            hooks = [dict(x) for x in con.execute("SELECT * FROM project_webhooks WHERE project_id=? AND active=1", (project["id"],)).fetchall()]
-        for hook in hooks:
-            signature = hmac.new(hook["secret"].encode(), raw, hashlib.sha256).hexdigest()
-            status, code, error = "failed", 0, ""
-            try:
-                response = await client.post(hook["url"], content=raw, headers={"content-type": "application/json",
-                  "x-matchall-event": "release.published", "x-matchall-event-id": event_id,
-                  "x-matchall-signature": f"sha256={signature}"})
-                code = response.status_code
-                status = "delivered" if 200 <= code < 300 else "failed"
-                error = "" if status == "delivered" else f"HTTP {code}"
-            except httpx.HTTPError as exc:
-                error = exc.__class__.__name__
-            with db() as con:
-                con.execute("""INSERT INTO webhook_deliveries(webhook_id,event_id,event_type,status,status_code,error,created_at,sent_at)
-                  VALUES(?,?,?,?,?,?,?,?)""", (hook["id"], event_id, "release.published", status, code, error, int(time.time()), int(time.time())))
 
 
 def project_view(con, slug, user=None):
@@ -1417,13 +1406,14 @@ async def developer_release_upload(request: Request, project_slug: str = Form(..
 async def developer_approve_release(release_id: int, request: Request, csrf_token: str = Form(...)):
     user=require_user(request); csrf(request,csrf_token); now=int(time.time())
     with db() as con:
+        con.execute("BEGIN IMMEDIATE")
         row=con.execute("SELECT r.*,p.slug,p.name,p.team_id,p.visibility FROM releases r JOIN projects p ON p.id=r.project_id WHERE r.id=?",(release_id,)).fetchone()
         if not row or team_role(con,row["team_id"],user)!="owner": raise HTTPException(403,"Owner required")
         if row["status"]!="draft": raise HTTPException(409,"release is not a draft")
         con.execute("UPDATE releases SET status='published',approved_by=?,approved_at=?,published_at=? WHERE id=?",(user["sub"],now,now,release_id))
         audit(con,user["sub"],"release.approved",team_id=row["team_id"],project_id=row["project_id"],detail=f"{row['version']}:{row['channel']}")
         project={"id":row["project_id"],"slug":row["slug"],"name":row["name"],"visibility":row["visibility"]}
-    await dispatch_release_event(project,row["version"],row["channel"])
+        enqueue_release_event(con, project, release_id, row["version"], row["channel"], BASE_URL, now)
     return RedirectResponse("/developer",status_code=303)
 
 
